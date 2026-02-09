@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8"/>
+    <title> Audit Logs</title>
+
+<style>
+  body{
+    font-family: 'Times New Roman', Times, serif;
+    margin: 24px;
+    background: #fdf6ea;
+  }
+  h1{
+    margin-bottom: 12px;
+  }
+  table{ border-collapse: collapse;
+  width: 100%;
+  background-color: white;
+}
+th,td{
+  border: 1px solid #ddd;
+  padding: 8px;
+  font-size: 14px;
+}
+th{
+  background: #222;
+  color: white;
+}
+
+tr:nth-child(even){
+  background:#ffedc5;
+}.allow{color: green;font-weight: bold;}
+.deny{color: red;font-weight: bold;}
+.controls{margin-bottom: 12px;}
+</style>
+  </head>
+
+
+<body>
+  <h2>Audit Logs</h2>
+  <div class="controls">
+    <button onclick="loadLogs()">Refresh</button>
+    <button onclick="exportCSV()">EXport to Csv</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Adapter</th>
+        <th>Card</th>
+        <th>Machine</th>
+        <th>Command</th>
+        <th>decision</th>
+        <th>Reason</th>
+    </thead>
+    <tbody id="Log-Body">
+      <tr><td colspan="7">Loading</td></tr>
+    </tbody>
+  </table>
+
+  <script>
+    async function loadLogs() {
+      const tbody = document.getElementById("log-body");
+      tbody.innerHTML = "<tr><td colspan='7'>Loading…</td></tr>";
+
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/audit-logs?limit=100");
+        const data = await res.json();
+
+        tbody.innerHTML = "";
+
+        if (data.length === 0) {
+          tbody.innerHTML = "<tr><td colspan='7'>No logs found</td></tr>";
+          return;
+        }
+
+        data.forEach(log => {
+          const tr = document.createElement("tr");
+
+          tr.innerHTML = `
+            <td>${new Date(log.created_at).toLocaleString()}</td>
+            <td>${log.adapter_id ?? "-"}</td>
+            <td>${log.card_id ?? "-"}</td>
+            <td>${log.machine_id}</td>
+            <td>${log.command}</td>
+            <td class="${log.decision === 'ALLOW' ? 'allow' : 'deny'}">
+              ${log.decision}
+            </td>
+            <td>${log.reason ?? "-"}</td>
+          `;
+
+          tbody.appendChild(tr);
+        });
+
+      } catch (err) {
+        tbody.innerHTML = "<tr><td colspan='7'>Error loading logs</td></tr>";
+        console.error(err);
+      }
+    }
+
+    loadLogs();
+  </script>
+
+</body>
+</html>

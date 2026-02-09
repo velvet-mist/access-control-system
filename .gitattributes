@@ -1,0 +1,29 @@
+<<<<<<< HEAD
+# Ignore everything by default
+* linguist-detectable=false
+
+# Explicitly include Rust (path-aware)
+rust-adapter/**/*.rs linguist-detectable=true
+
+# Explicitly include Python
+**/*.py linguist-detectable=true
+
+# Explicitly EXCLUDE HTML (it is currently dominating)
+**/*.html linguist-detectable=true
+
+# Explicitly exclude Makefiles everywhere
+**/Makefile linguist-detectable=false
+=======
+# Ignore build & tooling files
+Makefile linguist-detectable=false
+*.ld linguist-detectable=false
+*.map linguist-detectable=false
+
+# Ignore build directories
+target/** linguist-detectable=false
+build/** linguist-detectable=false
+
+# Explicitly count Rust & Python
+*.rs linguist-detectable=true
+*.py linguist-detectable=true
+>>>>>>> 87db3140225 (Fix GitHub language stats)
