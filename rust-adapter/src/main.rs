@@ -4,8 +4,7 @@ mod backend;
 mod plc;
 mod error;
 
-use core::panic::PanicInfo;
-
+use panic_halt as _;
 use config::Config;
 
 #[tokio::main]
