@@ -1,2 +1,5 @@
 /target
 target/
+migrations/
+*.md
+alembic.ini

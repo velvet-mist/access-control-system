@@ -95,7 +95,6 @@ def export_audit_logs(db: Session = Depends(get_db)):
     )
 @router.post("/user")
 def create_user(
-    payload: UserCreate,
     db: Session = Depends(get_db)
 ):
     user = User()
