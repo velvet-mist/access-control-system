@@ -7,7 +7,7 @@ edition = "2021"
 tokio = { version = "1.49.0", features = ["full"] }
 reqwest = { version = "0.13.2", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
-
+tokio-modbus = "*"
 thiserror = "2.0.18"
 serde_json= "1.0"
 tokio-util= { version = "0.7", features = ["codec"] }
@@ -16,3 +16,8 @@ anyhow="1.0.101"
 chrono ="0.4"
 panic-halt = "1.0.0"
 http-client = "6.5.3"
+rust-ethernet-ip = "0.6.2"
+windows-service = "0.8.0"
+jsonwebtoken = "10.3.0"
+[dependencies.ldap3]
+version = "0.12.1"

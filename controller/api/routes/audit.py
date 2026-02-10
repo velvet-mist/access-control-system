@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from controller.db.deps import get_db
 from controller.db.models.audit_log import AuditLog
 from controller.db.models.user import User
+from controller.db.models.card import Card
 from io import StringIO
 import csv
 from pydantic import BaseModel
@@ -14,10 +15,11 @@ router = APIRouter()
 
 class UserCreate(BaseModel):
     user_id: str
-    card_id: Optional[str] = None
+    card_id: str
     display_name: str
     user_type: str
     status: str
+    created_at: datetime
 
 
 class UserUpdate(BaseModel):
@@ -96,7 +98,7 @@ def create_user(
     payload: UserCreate,
     db: Session = Depends(get_db)
 ):
-    user = User(**payload.model_dump(), created_at=datetime.utcnow())
+    user = User()
     db.add(user)
     db.commit()
     db.refresh(user)
