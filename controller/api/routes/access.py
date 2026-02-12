@@ -13,24 +13,6 @@ router= APIRouter()
 RUST_ADAPTER_URL = os.getenv("RUST_ADAPTER_URL", "http://localhost:8080")
 RUST_ADAPTER_TOKEN = os.getenv("RUST_ADAPTER_TOKEN", "done")
 
-@router.post("/check-access")
-def check_access_api(
-    card_id:str,
-    machine_id:str,
-    command:str,
-    adapter= Depends(verify_adapter),
-    db: Session= Depends(get_db)
-):
-    allowed= check_access(
-        db=db,
-        card_id=card_id,
-        command=command,
-        machine_id=machine_id,
-        adapter_id= adapter.adapter_id
-    )
-    
-    return {"decision":"ALLOW" if allowed else "DENY"}
-
 @router.post("/trigger-plc")
 async def trigger_plc(
     card_id: str,
@@ -88,3 +70,6 @@ async def trigger_plc(
             status_code=503,
             detail=f"Failed to connect to Rust adapter: {str(e)}"
         )
+
+
+# @router.callbacks("/override token access")

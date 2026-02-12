@@ -12,7 +12,7 @@ def check_access(
 ) -> bool:
 
     card = db.query(Card).filter(
-        Card.card_id == card_id,
+        Card .card_id == card_id,
         Card.status == "active"
     ).first()
 

@@ -1,3 +1,4 @@
+# -- Active: 1770606449641@@127.0.0.1@5432@access_control
 from sqlalchemy import UUID, Column, ForeignKey, Integer, String, DateTime, PrimaryKeyConstraint
 from sqlalchemy.orm import relationship
 from controller.db.base_class import Base
@@ -36,3 +37,4 @@ class UserRole(Base):
     )
 
     user = relationship("User", back_populates="roles")
+    role = relationship("Role", back_populates="users")
