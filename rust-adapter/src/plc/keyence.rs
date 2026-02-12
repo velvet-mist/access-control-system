@@ -1,27 +1,128 @@
 use crate::error::AdapterError;
+use crate::config::Config;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-pub struct KeyencePlc{
-    access_req: bool,
-    access_ok:bool,
-    adapter_ok:bool,
+pub struct KeyencePlc {
+    port: Arc<Mutex<Option<Box<dyn serialport::SerialPort + Send>>>>,
+    config: Config,
 }
 
 impl KeyencePlc {
-    pub fn new() -> Self {
-        Self{
-            access_ok:false,
-            access_req:false,
-            adapter_ok:false,
+    pub fn new(cfg: &Config) -> Self {
+        Self {
+            port: Arc::new(Mutex::new(None)),
+            config: cfg.clone(),
         }
     }
 
-    pub fn set_allow(&self) -> Result<(), AdapterError> {
-        println!("PLC: ACCESS ALLOWED");
+    fn open_port(&mut self) -> Result<(), AdapterError> {
+        let mut port_guard = self.port.lock().map_err(|_| AdapterError::Plc)?;
+        if port_guard.is_some() {
+            return Ok(());
+        }
+
+        let port = serialport::new(&self.config.plc_port, self.config.plc_baudrate)
+            .timeout(Duration::from_secs(1))
+            .open()
+            .map_err(|e| AdapterError::Serial(e.to_string()))?;
+
+        *port_guard = Some(port);
         Ok(())
     }
 
-    pub fn set_deny(&self) -> Result<(), AdapterError> {
-        println!("PLC: ACCESS DENIED");
+    fn write_to_plc(&mut self, register: u16, value: u16) -> Result<(), AdapterError> {
+        self.open_port()?;
+
+        // Modbus RTU function code 0x06 (Write Single Register)
+        let slave_addr = self.config.plc_slave_addr;
+        let func_code: u8 = 0x06;
+
+        // Build Modbus RTU request frame
+        let mut frame: Vec<u8> = Vec::with_capacity(8);
+        frame.push(slave_addr);
+        frame.push(func_code);
+        frame.push((register >> 8) as u8);  // Register high byte
+        frame.push((register & 0xFF) as u8); // Register low byte
+        frame.push((value >> 8) as u8);     // Value high byte
+        frame.push((value & 0xFF) as u8);    // Value low byte
+
+        // Calculate CRC16
+        let crc = Self::calculate_crc(&frame);
+        frame.push(crc as u8);
+        frame.push((crc >> 8) as u8);
+
+        // Write to serial port
+        let mut port_guard = self.port.lock().map_err(|_| AdapterError::Plc)?;
+        let port = port_guard.as_mut().unwrap();
+        port.write_all(&frame)
+            .map_err(|e| AdapterError::PlcComm(e.to_string()))?;
+
+        // Small delay for PLC to process
+        std::thread::sleep(Duration::from_millis(50));
+
         Ok(())
+    }
+
+    fn calculate_crc(data: &[u8]) -> u16 {
+        let mut crc: u16 = 0xFFFF;
+        for &byte in data {
+            crc ^= byte as u16;
+            for _ in 0..8 {
+                if (crc & 0x0001) != 0 {
+                    crc >>= 1;
+                    crc ^= 0xA001;
+                } else {
+                    crc >>= 1;
+                }
+            }
+        }
+        crc
+    }
+
+    pub fn set_allow(&mut self) -> Result<(), AdapterError> {
+        println!("PLC: ACCESS ALLOWED - Writing to register {}", self.config.plc_register_allow);
+        self.write_to_plc(self.config.plc_register_allow, 1)?;
+        Ok(())
+    }
+
+    pub fn set_deny(&mut self) -> Result<(), AdapterError> {
+        println!("PLC: ACCESS DENIED - Writing to register {}", self.config.plc_register_deny);
+        self.write_to_plc(self.config.plc_register_deny, 1)?;
+        Ok(())
+    }
+
+    pub fn reset_signals(&mut self) -> Result<(), AdapterError> {
+        // Reset both allow and deny signals
+        self.write_to_plc(self.config.plc_register_allow, 0)?;
+        self.write_to_plc(self.config.plc_register_deny, 0)?;
+        Ok(())
+    }
+}
+
+impl Clone for KeyencePlc {
+    fn clone(&self) -> Self {
+        Self {
+            port: Arc::clone(&self.port),
+            config: self.config.clone(),
+        }
+    }
+}
+
+impl Clone for Config {
+    fn clone(&self) -> Self {
+        Self {
+            backend_url: self.backend_url.clone(),
+            adapter_token: self.adapter_token.clone(),
+            machine_id: self.machine_id.clone(),
+            server_host: self.server_host.clone(),
+            server_port: self.server_port,
+            plc_port: self.plc_port.clone(),
+            plc_baudrate: self.plc_baudrate,
+            plc_slave_addr: self.plc_slave_addr,
+            plc_register_allow: self.plc_register_allow,
+            plc_register_deny: self.plc_register_deny,
+        }
     }
 }

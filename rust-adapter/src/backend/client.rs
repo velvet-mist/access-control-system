@@ -33,17 +33,15 @@ impl BackendClient{
      machine_id: &str,
     command: &str,)
  -> Result<bool, AdapterError> {
-    let url = format!("{}/api/check-access", self.base_url);
+    let url = format!(
+        "{}/api/check-access?card_id={}&machine_id={}&command={}",
+        self.base_url, card_id, machine_id, command
+    );
 
     let resp = self
         .http
         .post(url)
         .header("X-Adapter-Token", &self.token)
-        .query(&[
-            ("card_id", card_id),
-            ("machine_id", machine_id),
-            ("command", command),
-        ])
         .send()
         .await
         .map_err(|_| AdapterError::Timeout)?;
