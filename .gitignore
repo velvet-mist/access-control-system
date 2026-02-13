@@ -3,3 +3,6 @@ target/
 migrations/
 *.md
 alembic.ini
+*.env
+*.gitattributes
+.gitignore

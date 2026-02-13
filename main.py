@@ -9,7 +9,7 @@ import controller.db.models.policy
 from controller.db.models.audit_log import AuditLog
 from controller.api.routes import audit
 from controller.api.routes import access
-
+from adapter import adapter
 def create_tables():
     Base.metadata.create_all(bind=engine)
     

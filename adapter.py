@@ -1,28 +1,48 @@
 from fastapi import FastAPI, Depends, HTTPException
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
+import os
 
-app = FastAPI()
+SECRET_KEY = os.getenv("JWT_SECRET", "dev_secret")
+ALGORITHM = "HS256"
+
+ROLE_PERMISSIONS = {
+    "operator": {"read"},
+    "engineer": {"read", "write", "trigger"},
+}
+
 security = HTTPBearer()
 
-roles = {"operator": ["read"], "engineer": ["read", "write", "trigger"]}
+def adapter():
+    app = FastAPI()
 
-async def get_current_role(token: str = Depends(security)):
-    try:
-        payload = jwt.decode(token.credentials, "secret", algorithms=["HS256"])
-        return payload["role"]
-    except:
-        raise HTTPException(401, "Invalid token")
+    async def get_current_role(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+    ):
+        try:
+            payload = jwt.decode(
+                credentials.credentials,
+                SECRET_KEY,
+                algorithms=[ALGORITHM],
+            )
+            return payload.get("role")
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=401, detail="Invalid token")
 
-@app.post("/trigger_inspection")
-async def trigger(role: str = Depends(get_current_role)):
-    if "trigger" not in roles.get(role, []):
-        raise HTTPException(403, "Insufficient role")
-    # Your API: modbus_client.write_register(100, 1)  # Trigger DM100
-    return {"status": "OK"}
+    def require_permission(permission: str):
+        async def checker(role: str = Depends(get_current_role)):
+            if permission not in ROLE_PERMISSIONS.get(role, set()):
+                raise HTTPException(status_code=403, detail="Insufficient role")
+            return role
+        return checker
 
-@app.get("/get_results")
-async def results(role: str = Depends(get_current_role)):
-    if "read" not in roles.get(role, []): raise HTTPException(403)
-    # Your API read
-    return {"ng_ok": True}
+    @app.post("/trigger_inspection")
+    async def trigger(role: str = Depends(require_permission("trigger"))):
+        # modbus_client.write_register(100, 1)
+        return {"status": "OK"}
+
+    @app.get("/get_results")
+    async def results(role: str = Depends(require_permission("read"))):
+        return {"ng_ok": True}
+
+    return app
