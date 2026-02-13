@@ -21,7 +21,6 @@ async fn main() {
 
     // Initialize PLC
     let plc = KeyencePlc::new(&cfg);
-
     // Start HTTP server (this blocks)
     if let Err(e) = start_server(cfg, plc).await {
         eprintln!("Server error: {}", e);

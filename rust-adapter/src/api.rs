@@ -1,4 +1,3 @@
-use http_client::http_types::auth;
 use warp::Filter;
 use serde::{Deserialize, Serialize};
 use crate::error::AdapterError;
@@ -43,7 +42,7 @@ pub struct JwtPayload {
 
 pub fn create_filters(
     config: Config,
-    mut plc: KeyencePlc,
+    plc: KeyencePlc,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let health = warp::path!("health").map(|| "OK");
 
@@ -51,7 +50,7 @@ pub fn create_filters(
 
     // JWT authentication middleware
     let jwt_secret = config.adapter_token.clone();
-    let auth = warp::header::optional("Authorization")
+    let _auth = warp::header::optional("Authorization")
         .and(warp::any().map(move || jwt_secret.clone()))
         .and_then(|auth_header: Option<String>, secret: String| async move {
             if auth_header.is_none() {
@@ -104,7 +103,7 @@ pub fn create_filters(
     // Check access endpoint (called by Python backend)
     let check_access = warp::path!("check-access")
         .and(warp::query::<CheckAccessRequest>())
-        .and_then(|request: CheckAccessRequest| async move {
+        .and_then(|_request: CheckAccessRequest| async move {
             // Just echo the decision for now - real implementation would check with backend
             Ok::<_, warp::Rejection>(warp::reply::json(&CheckAccessResponse {
                 decision: "ALLOW".to_string(), // Placeholder

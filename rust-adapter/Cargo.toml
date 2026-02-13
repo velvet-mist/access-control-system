@@ -19,6 +19,7 @@ rust-ethernet-ip = "0.6.2"
 windows-service = "0.8.0"
 jsonwebtoken = "10.3.0"
 warp = { version = "0.4.2", features = ["websocket", "server"] }
+pyo3 = { version = "0.28.0", features = ["extension-module"] }
 [dependencies.ldap3]
 version = "0.12.1"
 
