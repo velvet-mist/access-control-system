@@ -7,7 +7,6 @@ class Policy(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     role = Column(String, nullable=False)
-    machine_id = Column(String, nullable=False)
     command = Column(String, nullable=False)
 
     allow = Column(Boolean, default=False)

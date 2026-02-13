@@ -11,7 +11,6 @@ class AuditLog(Base):
     card_id= Column(String, index=True)
     user_id= Column(String, index= True)
     
-    machine_id= Column(String, nullable= True)
     command= Column(String, nullable=False)
     
     decision= Column(String, nullable=False)

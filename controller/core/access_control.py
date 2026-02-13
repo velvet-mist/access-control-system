@@ -6,7 +6,6 @@ from controller.core.audit import log_access
 def check_access(
     db: Session,
     card_id: str,
-    machine_id: str,
     command: str,
     adapter_id: str
 ) -> bool:
@@ -22,7 +21,6 @@ def check_access(
             adapter_id=adapter_id,
             card_id=card_id,
             user_id=None,
-            machine_id=machine_id,
             command=command,
             decision="DENY",
             reason="Card invalid or inactive"
@@ -31,7 +29,6 @@ def check_access(
 
     policy = db.query(Policy).filter(
         Policy.role == card.user.role,
-        Policy.machine_id == machine_id,
         Policy.command == command,
         Policy.allow == True
     ).first()
@@ -42,7 +39,6 @@ def check_access(
             adapter_id=adapter_id,
             card_id=card_id,
             user_id=card.user.user_id,
-            machine_id=machine_id,
             command=command,
             decision="ALLOW",
             reason="Policy matched"
@@ -54,7 +50,6 @@ def check_access(
         adapter_id=adapter_id,
         card_id=card_id,
         user_id=card.user.user_id,
-        machine_id=machine_id,
         command=command,
         decision="DENY",
         reason="No matching policy"

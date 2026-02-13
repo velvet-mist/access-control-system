@@ -16,7 +16,6 @@ RUST_ADAPTER_TOKEN = os.getenv("RUST_ADAPTER_TOKEN", "done")
 @router.post("/trigger-plc")
 async def trigger_plc(
     card_id: str,
-    machine_id: str,
     command: str,
     adapter= Depends(verify_adapter),
     db: Session= Depends(get_db)
@@ -30,7 +29,6 @@ async def trigger_plc(
         db=db,
         card_id=card_id,
         command=command,
-        machine_id=machine_id,
         adapter_id=adapter.adapter_id
     )
     
@@ -43,7 +41,6 @@ async def trigger_plc(
                 f"{RUST_ADAPTER_URL}/api/trigger",
                 json={
                     "card_id": card_id,
-                    "machine_id": machine_id,
                     "command": command,
                     "decision": decision
                 },
