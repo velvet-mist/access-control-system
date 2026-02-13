@@ -23,6 +23,9 @@ pub enum AdapterError {
 
     #[error("Authentication failed")]
     Auth,
+
+    #[error("Override authorization failed")]
+    OverrideAuth,
 }
 
 impl Reject for AdapterError {}

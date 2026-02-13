@@ -115,6 +115,8 @@ impl Clone for Config {
         Self {
             backend_url: self.backend_url.clone(),
             adapter_token: self.adapter_token.clone(),
+            override_token: self.override_token.clone(),
+            override_passcode: self.override_passcode.clone(),
             machine_id: self.machine_id.clone(),
             server_host: self.server_host.clone(),
             server_port: self.server_port,

@@ -26,6 +26,5 @@ pub async fn run(cfg: Config) -> Result<(), AdapterError> {
     } else {
         plc.set_deny()?;
     }
-
     Ok(())
 }

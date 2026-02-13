@@ -4,12 +4,28 @@ mod backend;
 mod plc;
 mod error;
 mod api;
+mod override_role;
 
 use config::Config;
 use plc::keyence::KeyencePlc;
 use api::start_server;
+// #[warn(unused_imports)]
+// use crate::api::CheckAccessRequest;
 
 #[tokio::main]
+// async fn check_access(
+//     Json(req): Json<CheckAccessRequest>,
+// ) -> Result<Json<AccessResponse>, Error> {
+
+//     let decision = backend
+//         .check_access(&req.machine_id, &req.card_id)
+//         .await?;
+
+//     Ok(Json(AccessResponse {
+//         decision,
+//     }))
+// }
+
 async fn main() {
     let cfg = Config::load();
 
