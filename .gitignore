@@ -6,3 +6,4 @@ alembic.ini
 .env
 .gitattributes
 .gitignore
+seed_test_data.py
