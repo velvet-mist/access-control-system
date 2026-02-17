@@ -92,7 +92,7 @@ impl KeyencePlc {
         self.write_to_plc(self.config.plc_register_deny, 1)?;
         Ok(())
     }
-
+    #[allow(dead_code)]
     pub fn reset_signals(&mut self) -> Result<(), AdapterError> {
         // Reset both allow and deny signals
         self.write_to_plc(self.config.plc_register_allow, 0)?;

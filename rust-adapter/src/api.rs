@@ -40,7 +40,7 @@ pub struct CheckAccessRequest {
 pub struct CheckAccessResponse {
     pub decision: String,
 }
-
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct JwtPayload {
     pub sub: String,

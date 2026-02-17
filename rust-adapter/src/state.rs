@@ -4,7 +4,7 @@ use crate::{
     error::AdapterError,
     plc::keyence::KeyencePlc,
 };
-
+#[allow(dead_code)]
 pub async fn run(cfg: Config) -> Result<(), AdapterError> {
     let backend = BackendClient::new(&cfg);
     let mut plc = KeyencePlc::new(&cfg);
