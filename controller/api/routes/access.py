@@ -19,7 +19,6 @@ RUST_ADAPTER_TOKEN = os.getenv("RUST_ADAPTER_TOKEN", "done")
 # Pydantic models for request/response
 class CheckAccessQueryParams(BaseModel):
     card_id: str
-    machine_id: str
     command: str
 
 class RegisterCardRequest(BaseModel):
@@ -55,7 +54,6 @@ async def check_access_endpoint(
         db=db,
         card_id=card_id,
         command=command,
-        adapter_id=machine_id  # Using machine_id as adapter_id
     )
     
     decision = "ALLOW" if allowed else "DENY"
