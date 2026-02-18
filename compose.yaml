@@ -2,22 +2,31 @@ version: "3.8"
 
 services:
   db:
-      image: postgres:15
-      environment:
-        POSTGRES_USER: postgres
-        POSTGRES_PASSWORD: postgres
-        POSTGRES_DB: access_control
-      ports:
-        - "5432:5432"
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: access_control
+    ports:
+      - "5432:5432"
+
   api:
     build:
       context: .
       dockerfile: controller/Dockerfile
+    depends_on:
+      - db
+    environment:
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: access_control
     ports:
       - "8000:8000"
 
-
   adapter:
-    build: ./rust-adapter
+    build:
+      context: ./rust-adapter
     depends_on:
       - api
