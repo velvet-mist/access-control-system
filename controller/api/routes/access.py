@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import httpx
 import os
-import uuid
 
 from controller.core.access_control import check_access, check_card_exists
 from controller.core.security import verify_adapter
@@ -17,13 +16,11 @@ router = APIRouter()
 RUST_ADAPTER_URL = os.getenv("RUST_ADAPTER_URL", "http://localhost:8080")
 RUST_ADAPTER_TOKEN = os.getenv("RUST_ADAPTER_TOKEN", "done")
 
-
 # Pydantic models for request/response
 class CheckAccessQueryParams(BaseModel):
     card_id: str
     machine_id: str
     command: str
-
 
 class RegisterCardRequest(BaseModel):
     card_id: str
