@@ -5,6 +5,22 @@ from controller.db.models.policy import Policy
 from controller.db.models.user import User, UserRole, Role
 from controller.core.audit import log_access
 
+def check_card_exists(db: Session, card_id: str) -> tuple[bool, str]:
+    """
+    Check if a card exists in the database.
+    Returns (exists, status) where status is 'active', 'inactive', or 'not_found'
+    """
+    card = db.query(Card).filter(Card.card_id == card_id).first()
+    
+    if not card:
+        return False, "not_found"
+    
+    if card.status == "active":
+        return True, "active"
+    
+    return True, "inactive"
+
+
 def check_access(
     db: Session,
     card_id: str,
