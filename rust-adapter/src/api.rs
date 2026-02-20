@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::error::AdapterError;
 use crate::override_role;
-use crate::plc::keyence::KeyencePlc;
+use crate::plc::SharedPlc;
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use warp::http::StatusCode;
@@ -40,6 +40,7 @@ pub struct CheckAccessRequest {
 pub struct CheckAccessResponse {
     pub decision: String,
 }
+
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct JwtPayload {
@@ -78,18 +79,24 @@ fn with_auth(
         .untuple_one()
 }
 
-fn apply_plc_signal(mut plc: KeyencePlc, decision: &str) -> Result<TriggerResponse, AdapterError> {
+fn apply_plc_signal(
+    plc: SharedPlc,
+    config: &Config,
+    decision: &str,
+) -> Result<TriggerResponse, AdapterError> {
+    let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
+
     let (register, value) = match decision {
-        "ALLOW" => (100, 1),
-        "DENY" => (101, 1),
+        "ALLOW" => {
+            plc_guard.set_allow()?;
+            (config.plc_register_allow, 1)
+        }
+        "DENY" => {
+            plc_guard.set_deny()?;
+            (config.plc_register_deny, 1)
+        }
         _ => return Err(AdapterError::Plc),
     };
-
-    if decision == "ALLOW" {
-        plc.set_allow()?;
-    } else {
-        plc.set_deny()?;
-    }
 
     Ok(TriggerResponse {
         status: "OK".to_string(),
@@ -100,30 +107,31 @@ fn apply_plc_signal(mut plc: KeyencePlc, decision: &str) -> Result<TriggerRespon
 
 pub fn create_filters(
     config: Config,
-    plc: KeyencePlc,
+    plc: SharedPlc,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let health = warp::path!("health").map(|| "OK");
 
     let api = warp::path("api");
     let auth = with_auth(config.adapter_token.clone());
 
-    // PLC trigger endpoint (requires normal adapter bearer auth)
     let trigger_plc_plc = plc.clone();
+    let trigger_plc_cfg = config.clone();
     let trigger_plc = warp::path!("trigger")
         .and(warp::post())
         .and(auth.clone())
         .and(warp::body::json())
         .and(warp::any().map(move || trigger_plc_plc.clone()))
-        .and_then(|request: TriggerRequest, plc: KeyencePlc| async move {
-            // Force read all fields so request remains explicit and future-safe.
+        .and(warp::any().map(move || trigger_plc_cfg.clone()))
+        .and_then(|request: TriggerRequest, plc: SharedPlc, cfg: Config| async move {
             let _ = (&request.card_id, &request.machine_id, &request.command);
 
-            apply_plc_signal(plc, request.decision.as_str())
-                .map(|payload| warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK))
+            apply_plc_signal(plc, &cfg, request.decision.as_str())
+                .map(|payload| {
+                    warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK)
+                })
                 .map_err(warp::reject::custom)
         });
 
-    // Override endpoint (authorizes with either token header or passcode body)
     let override_cfg = config.clone();
     let override_plc = plc.clone();
     let trigger_override = warp::path!("override")
@@ -142,11 +150,10 @@ pub fn create_filters(
                     return Err(warp::reject::custom(AdapterError::OverrideAuth));
                 }
 
-                // For manual override, default command is ALLOW.
                 let decision = request.command.as_deref().unwrap_or("ALLOW");
                 let _ = request.reason.as_deref();
 
-                apply_plc_signal(plc, decision)
+                apply_plc_signal(plc, &cfg, decision)
                     .map(|payload| {
                         warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK)
                     })
@@ -154,7 +161,6 @@ pub fn create_filters(
             }
         });
 
-    // Check access endpoint (called by Python backend)
     let check_access = warp::path!("check-access")
         .and(warp::query::<CheckAccessRequest>())
         .and_then(|request: CheckAccessRequest| async move {
@@ -204,7 +210,7 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
     Err(err)
 }
 
-pub async fn start_server(config: Config, plc: KeyencePlc) -> Result<(), AdapterError> {
+pub async fn start_server(config: Config, plc: SharedPlc) -> Result<(), AdapterError> {
     let routes = create_filters(config.clone(), plc);
     let addr = format!("{}:{}", config.server_host, config.server_port);
 

@@ -1,63 +1,64 @@
-mod config;
-mod state;
-mod backend;
-mod plc;
-mod error;
 mod api;
+mod backend;
+mod config;
+mod error;
 mod override_role;
+mod plc;
+mod state;
 
-use config::Config;
-use plc::keyence::KeyencePlc;
 use api::start_server;
-// #[warn(unused_imports)]
-// use crate::api::CheckAccessRequest;
-
-use pyo3::types::PyModule;
+use config::Config;
+use plc::create_plc_device;
 use pyo3::prelude::*;
+use pyo3::types::PyModule;
 
 #[tokio::main]
-// async fn check_access(
-//     Json(req): Json<CheckAccessRequest>,
-// ) -> Result<Json<AccessResponse>, Error> {
-
-//     let decision = backend
-//         .check_access(&req.machine_id, &req.card_id)
-//         .await?;
-
-//     Ok(Json(AccessResponse {
-//         decision,
-//     }))
-// }
-
 async fn main() {
     let cfg = Config::load();
 
-    println!("Starting Rust adapter for Keyence PLC");
+    println!("Starting Rust adapter");
     println!("Backend URL: {}", cfg.backend_url);
     println!("Machine ID: {}", cfg.machine_id);
-    println!("PLC Port: {} @ {} baud", cfg.plc_port, cfg.plc_baudrate);
+    println!("PLC Type: {}", cfg.plc_type);
+    if cfg.plc_type == "keyence" {
+        println!("PLC Port: {} @ {} baud", cfg.plc_port, cfg.plc_baudrate);
+    } else {
+        println!("Cognex Endpoint: {}:{}", cfg.cognex_host, cfg.cognex_port);
+    }
     println!("HTTP Server: {}:{}", cfg.server_host, cfg.server_port);
 
-    tokio::task::spawn_blocking(||{
-        if let Err(e)= python(){
-            eprintln!("Python error: {:?}",e);
+    if cfg.run_embedded_python {
+        let py_module = cfg.python_module.clone();
+        let py_function = cfg.python_function.clone();
+
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = run_python(&py_module, &py_function) {
+                eprintln!("Embedded Python error: {:?}", e);
+            }
+        });
+    } else {
+        println!("Embedded Python disabled (RUN_EMBEDDED_PYTHON=false)");
+    }
+
+    let plc = match create_plc_device(&cfg) {
+        Ok(plc) => plc,
+        Err(e) => {
+            eprintln!("PLC initialization failed: {}", e);
+            return;
         }
-    });
-    // Initialize PLC
-    let plc = KeyencePlc::new(&cfg);
-    // Start HTTP server (this blocks)
+    };
+
     if let Err(e) = start_server(cfg, plc).await {
         eprintln!("Server error: {}", e);
     }
 }
 
-
-fn python() -> PyResult<()> {
+fn run_python(module_name: &str, function_name: &str) -> PyResult<()> {
     pyo3::Python::initialize();
 
     Python::attach(|py| {
-        let module = PyModule::import(py, "main")?;
-        module.getattr("main")?.call0()?;
+        let module = PyModule::import(py, module_name)?;
+        module.getattr(function_name)?.call0()?;
         Ok(())
     })
 }

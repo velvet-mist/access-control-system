@@ -1,18 +1,13 @@
-use crate::{
-    backend::client::BackendClient,
-    config::Config,
-    error::AdapterError,
-    plc::keyence::KeyencePlc,
-};
+use crate::{backend::client::BackendClient, config::Config, error::AdapterError, plc::create_plc_device};
+
 #[allow(dead_code)]
 pub async fn run(cfg: Config) -> Result<(), AdapterError> {
     let backend = BackendClient::new(&cfg);
-    let mut plc = KeyencePlc::new(&cfg);
+    let plc = create_plc_device(&cfg)?;
 
     println!("Adapter running (IDLE)");
-    println!("PLC configured on port: {} @ {} baud", cfg.plc_port, cfg.plc_baudrate);
+    println!("PLC type configured: {}", cfg.plc_type);
 
-    // ---- simulated event ----
     let card_id = "CARD123";
     let command = "START";
 
@@ -21,10 +16,11 @@ pub async fn run(cfg: Config) -> Result<(), AdapterError> {
         .await
         .unwrap_or(false);
 
+    let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
     if allowed {
-        plc.set_allow()?;
+        plc_guard.set_allow()?;
     } else {
-        plc.set_deny()?;
+        plc_guard.set_deny()?;
     }
     Ok(())
 }

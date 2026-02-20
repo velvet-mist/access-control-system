@@ -1,5 +1,6 @@
-use crate::error::AdapterError;
 use crate::config::Config;
+use crate::error::AdapterError;
+use crate::plc::PlcDevice;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -43,10 +44,10 @@ impl KeyencePlc {
         let mut frame: Vec<u8> = Vec::with_capacity(8);
         frame.push(slave_addr);
         frame.push(func_code);
-        frame.push((register >> 8) as u8);  // Register high byte
+        frame.push((register >> 8) as u8); // Register high byte
         frame.push((register & 0xFF) as u8); // Register low byte
-        frame.push((value >> 8) as u8);     // Value high byte
-        frame.push((value & 0xFF) as u8);    // Value low byte
+        frame.push((value >> 8) as u8); // Value high byte
+        frame.push((value & 0xFF) as u8); // Value low byte
 
         // Calculate CRC16
         let crc = Self::calculate_crc(&frame);
@@ -80,51 +81,27 @@ impl KeyencePlc {
         }
         crc
     }
+}
 
-    pub fn set_allow(&mut self) -> Result<(), AdapterError> {
-        println!("PLC: ACCESS ALLOWED - Writing to register {}", self.config.plc_register_allow);
-        self.write_to_plc(self.config.plc_register_allow, 1)?;
-        Ok(())
+impl PlcDevice for KeyencePlc {
+    fn set_allow(&mut self) -> Result<(), AdapterError> {
+        println!(
+            "PLC: ACCESS ALLOWED - Writing to register {}",
+            self.config.plc_register_allow
+        );
+        self.write_to_plc(self.config.plc_register_allow, 1)
     }
 
-    pub fn set_deny(&mut self) -> Result<(), AdapterError> {
-        println!("PLC: ACCESS DENIED - Writing to register {}", self.config.plc_register_deny);
-        self.write_to_plc(self.config.plc_register_deny, 1)?;
-        Ok(())
+    fn set_deny(&mut self) -> Result<(), AdapterError> {
+        println!(
+            "PLC: ACCESS DENIED - Writing to register {}",
+            self.config.plc_register_deny
+        );
+        self.write_to_plc(self.config.plc_register_deny, 1)
     }
-    #[allow(dead_code)]
-    pub fn reset_signals(&mut self) -> Result<(), AdapterError> {
-        // Reset both allow and deny signals
+
+    fn reset_signals(&mut self) -> Result<(), AdapterError> {
         self.write_to_plc(self.config.plc_register_allow, 0)?;
-        self.write_to_plc(self.config.plc_register_deny, 0)?;
-        Ok(())
-    }
-}
-
-impl Clone for KeyencePlc {
-    fn clone(&self) -> Self {
-        Self {
-            port: Arc::clone(&self.port),
-            config: self.config.clone(),
-        }
-    }
-}
-
-impl Clone for Config {
-    fn clone(&self) -> Self {
-        Self {
-            backend_url: self.backend_url.clone(),
-            adapter_token: self.adapter_token.clone(),
-            override_token: self.override_token.clone(),
-            override_passcode: self.override_passcode.clone(),
-            machine_id: self.machine_id.clone(),
-            server_host: self.server_host.clone(),
-            server_port: self.server_port,
-            plc_port: self.plc_port.clone(),
-            plc_baudrate: self.plc_baudrate,
-            plc_slave_addr: self.plc_slave_addr,
-            plc_register_allow: self.plc_register_allow,
-            plc_register_deny: self.plc_register_deny,
-        }
+        self.write_to_plc(self.config.plc_register_deny, 0)
     }
 }
