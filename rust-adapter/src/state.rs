@@ -1,4 +1,7 @@
-use crate::{backend::client::BackendClient, config::Config, error::AdapterError, plc::create_plc_device};
+use crate::{backend::client::BackendClient, 
+    config::Config, 
+    error::AdapterError, 
+    plc::create_plc_device};
 
 #[allow(dead_code)]
 pub async fn run(cfg: Config) -> Result<(), AdapterError> {

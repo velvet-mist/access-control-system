@@ -19,3 +19,10 @@ async fn send_command(stream: &mut TcpStream, command: &str) -> Result<String, B
     
     Ok(response)
 }
+// You need to determine:
+
+// What TCP port CV-X uses for command control
+
+// Whether it exposes a command protocol
+
+// Whether you can disable direct editor access
