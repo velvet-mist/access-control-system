@@ -21,5 +21,7 @@ pub trait PlcDevice: Send + Sync {
 pub type SharedPlc = Arc<Mutex<Box<dyn PlcDevice>>>;
 
 pub fn create_plc_device(cfg: &Config) -> Result<SharedPlc, AdapterError> {
-    Ok(Arc::new(Mutex::new(Box::new(keyence::KeyencePlc::new(cfg)))))
+    Ok(Arc::new(Mutex::new(Box::new(keyence::KeyencePlc::new(
+        cfg,
+    )))))
 }

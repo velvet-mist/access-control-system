@@ -123,7 +123,15 @@ fn apply_plc_signal(
 }
 
 fn is_access_controlled_command(command: &str) -> bool {
-    matches!(command, "SO" | "RO")
+    matches!(command, "R0" | "RO" | "S0" | "SO")
+}
+
+fn normalize_command(command: &str) -> String {
+    match command.trim().to_ascii_uppercase().as_str() {
+        "RO" | "R0" => "R0".to_string(),
+        "SO" | "S0" => "S0".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn forward_keyence_command(cfg: &Config, command: &str) -> Result<(), AdapterError> {
@@ -173,7 +181,7 @@ async fn authorize_and_forward_command(
     cfg: Config,
     plc: SharedPlc,
 ) -> Result<AuthorizeCommandResponse, AdapterError> {
-    let command = request.command.trim().to_ascii_uppercase();
+    let command = normalize_command(&request.command);
 
     if !is_access_controlled_command(&command) {
         forward_keyence_command(&cfg, &command)?;

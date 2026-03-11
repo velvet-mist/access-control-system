@@ -10,11 +10,11 @@ mod state;
 use api::start_server;
 use config::Config;
 use plc::create_plc_device;
-use std::env;
 #[cfg(feature = "embedded-python")]
 use pyo3::prelude::*;
 #[cfg(feature = "embedded-python")]
 use pyo3::types::PyModule;
+use std::env;
 
 #[tokio::main]
 async fn main() {

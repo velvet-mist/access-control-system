@@ -25,8 +25,8 @@ impl KeyenceCommand {
     pub fn to_string(&self) -> &'static str {
         match self {
             KeyenceCommand::TriggerAll => "TA",
-            KeyenceCommand::RunMode => "RO",
-            KeyenceCommand::SetupMode => "SO",
+            KeyenceCommand::RunMode => "R0",
+            KeyenceCommand::SetupMode => "S0",
             KeyenceCommand::TestMode => "TM",
             KeyenceCommand::Reset => "RS",
             KeyenceCommand::Status => "ST",
@@ -114,8 +114,8 @@ mod tests {
     #[test]
     fn test_command_to_string() {
         assert_eq!(KeyenceCommand::TriggerAll.to_string(), "TA");
-        assert_eq!(KeyenceCommand::RunMode.to_string(), "RO");
-        assert_eq!(KeyenceCommand::SetupMode.to_string(), "SO");
+        assert_eq!(KeyenceCommand::RunMode.to_string(), "R0");
+        assert_eq!(KeyenceCommand::SetupMode.to_string(), "S0");
         assert_eq!(KeyenceCommand::TestMode.to_string(), "TM");
         assert_eq!(KeyenceCommand::Reset.to_string(), "RS");
         assert_eq!(KeyenceCommand::Status.to_string(), "ST");

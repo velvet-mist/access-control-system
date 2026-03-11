@@ -5,6 +5,24 @@ from controller.db.models.policy import Policy
 from controller.db.models.user import User, UserRole, Role
 from controller.core.audit import log_access
 
+
+COMMAND_ALIASES = {
+    "RO": {"RO", "R0"},
+    "R0": {"RO", "R0"},
+    "SO": {"SO", "S0"},
+    "S0": {"SO", "S0"},
+}
+
+
+def normalize_command(command: str) -> str:
+    normalized = command.strip().upper()
+    if normalized in {"RO", "R0"}:
+        return "R0"
+    if normalized in {"SO", "S0"}:
+        return "S0"
+    return normalized
+
+
 def check_card_exists(db: Session, card_id: str) -> tuple[bool, str]:
     """
     Check if a card exists in the database.
@@ -27,6 +45,8 @@ def check_access(
     command: str,
     adapter_id: str
 ) -> bool:
+    normalized_command = normalize_command(command)
+    policy_commands = COMMAND_ALIASES.get(normalized_command, {normalized_command})
 
     card = db.query(Card).filter(
         Card.card_id == card_id,
@@ -39,7 +59,7 @@ def check_access(
             adapter_id=adapter_id,
             card_id=card_id,
             user_id=None,
-            command=command,
+            command=normalized_command,
             decision="DENY",
             reason="Card invalid or inactive"
         )
@@ -56,7 +76,7 @@ def check_access(
             adapter_id=adapter_id,
             card_id=card_id,
             user_id=card.user_id,
-            command=command,
+            command=normalized_command,
             decision="DENY",
             reason="User has no role assigned"
         )
@@ -65,7 +85,7 @@ def check_access(
     # Query policy by role_id
     policy = db.query(Policy).filter(
         Policy.role_id == user_role.role_id,
-        Policy.command == command,
+        Policy.command.in_(policy_commands),
         Policy.allow == True
     ).first()
 
@@ -75,7 +95,7 @@ def check_access(
             adapter_id=adapter_id,
             card_id=card_id,
             user_id=card.user_id,
-            command=command,
+            command=normalized_command,
             decision="ALLOW",
             reason="Policy matched"
         )
@@ -86,7 +106,7 @@ def check_access(
         adapter_id=adapter_id,
         card_id=card_id,
         user_id=card.user_id,
-        command=command,
+        command=normalized_command,
         decision="DENY",
         reason="No matching policy"
     )

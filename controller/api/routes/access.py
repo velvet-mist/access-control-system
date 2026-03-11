@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import httpx
 import os
 
-from controller.core.access_control import check_access, check_card_exists
+from controller.core.access_control import check_access, check_card_exists, normalize_command
 from controller.core.security import verify_adapter
 from controller.db.deps import get_db
 from controller.db.models.card import Card
@@ -15,6 +15,7 @@ router = APIRouter()
 # Rust adapter settings
 RUST_ADAPTER_URL = os.getenv("RUST_ADAPTER_URL", "http://localhost:8080")
 RUST_ADAPTER_TOKEN = os.getenv("RUST_ADAPTER_TOKEN", "done")
+DEFAULT_MACHINE_ID = os.getenv("MACHINE_ID", "MACHINE_01")
 
 # Pydantic models for request/response
 class CheckAccessQueryParams(BaseModel):
@@ -27,11 +28,12 @@ class RegisterCardRequest(BaseModel):
     role_name: str
 
 
-@router.get("/check-access")
+@router.api_route("/check-access", methods=["GET", "POST"])
 async def check_access_endpoint(
     card_id: str,
     machine_id: str,
     command: str,
+    adapter=Depends(verify_adapter),
     db: Session = Depends(get_db)
 ):
     """
@@ -40,6 +42,7 @@ async def check_access_endpoint(
     - "ALLOW" or "DENY" if card exists and is active
     - "NEW_CARD" if card is not registered in the system
     """
+    normalized_command = normalize_command(command)
     card_exists, status = check_card_exists(db, card_id)
     
     if not card_exists:
@@ -53,7 +56,8 @@ async def check_access_endpoint(
     allowed = check_access(
         db=db,
         card_id=card_id,
-        command=command,
+        command=normalized_command,
+        adapter_id=str(adapter.adapter_id),
     )
     
     decision = "ALLOW" if allowed else "DENY"
@@ -134,32 +138,22 @@ async def register_card(
 async def trigger_plc(
     card_id: str,
     command: str,
-    adapter= Depends(verify_adapter),
-    db: Session= Depends(get_db)
+    machine_id: str = DEFAULT_MACHINE_ID,
+    adapter=Depends(verify_adapter),
 ):
     """
-    Trigger the Rust adapter to control the Keyence PLC.
-    This endpoint is called after access is checked to signal the PLC.
+    Authorize and forward a machine command through the Rust adapter.
     """
-    # First check access
-    allowed = check_access(
-        db=db,
-        card_id=card_id,
-        command=command,
-        adapter_id=adapter.adapter_id
-    )
-    
-    decision = "ALLOW" if allowed else "DENY"
-    
-    # Call Rust adapter to trigger PLC
+    normalized_command = normalize_command(command)
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
-                f"{RUST_ADAPTER_URL}/api/trigger",
+                f"{RUST_ADAPTER_URL}/api/authorize-command",
                 json={
                     "card_id": card_id,
-                    "command": command,
-                    "decision": decision
+                    "machine_id": machine_id,
+                    "command": normalized_command,
                 },
                 headers={"Authorization": f"Bearer {RUST_ADAPTER_TOKEN}"}
             )
@@ -171,14 +165,14 @@ async def trigger_plc(
                 )
             
             plc_response = response.json()
-            
+
             return {
-                "decision": decision,
-                "plc_triggered": True,
-                "plc_register": plc_response.get("plc_register"),
-                "plc_value": plc_response.get("value")
+                "decision": plc_response.get("decision"),
+                "forwarded": plc_response.get("forwarded", False),
+                "access_checked": plc_response.get("access_checked", False),
+                "command": plc_response.get("command", normalized_command),
             }
-            
+
     except httpx.RequestError as e:
         raise HTTPException(
             status_code=503,
