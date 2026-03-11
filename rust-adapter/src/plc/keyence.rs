@@ -84,6 +84,18 @@ impl KeyencePlc {
 }
 
 impl PlcDevice for KeyencePlc {
+    fn set_request_pending(&mut self) -> Result<(), AdapterError> {
+        println!(
+            "PLC: ACCESS REQUEST PENDING - Writing to register {}",
+            self.config.plc_register_request_pending
+        );
+        self.write_to_plc(self.config.plc_register_request_pending, 1)
+    }
+
+    fn clear_request_pending(&mut self) -> Result<(), AdapterError> {
+        self.write_to_plc(self.config.plc_register_request_pending, 0)
+    }
+
     fn set_allow(&mut self) -> Result<(), AdapterError> {
         println!(
             "PLC: ACCESS ALLOWED - Writing to register {}",
@@ -101,6 +113,7 @@ impl PlcDevice for KeyencePlc {
     }
 
     fn reset_signals(&mut self) -> Result<(), AdapterError> {
+        self.clear_request_pending()?;
         self.write_to_plc(self.config.plc_register_allow, 0)?;
         self.write_to_plc(self.config.plc_register_deny, 0)
     }

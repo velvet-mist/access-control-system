@@ -15,6 +15,8 @@ pub struct Config {
     pub plc_port: String,
     pub plc_baudrate: u32,
     pub plc_slave_addr: u8,
+    pub plc_register_request_pending: u16,
+    pub plc_request_pending_min_ms: u64,
     pub plc_register_allow: u16,
     pub plc_register_deny: u16,
     // Cognex settings (TCP command scaffold)
@@ -43,6 +45,8 @@ impl Config {
             plc_port: env_or("PLC_PORT", default_serial_port()),
             plc_baudrate: env_parse_or("PLC_BAUDRATE", 9600),
             plc_slave_addr: env_parse_or("PLC_SLAVE_ADDR", 1),
+            plc_register_request_pending: env_parse_or("PLC_REGISTER_REQUEST_PENDING", 102),
+            plc_request_pending_min_ms: env_parse_or("PLC_REQUEST_PENDING_MIN_MS", 1500),
             plc_register_allow: env_parse_or("PLC_REGISTER_ALLOW", 100),
             plc_register_deny: env_parse_or("PLC_REGISTER_DENY", 101),
             cognex_host: env_or("COGNEX_HOST", "127.0.0.1"),

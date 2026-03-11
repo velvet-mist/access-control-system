@@ -1,9 +1,12 @@
+use crate::backend::client::BackendClient;
 use crate::config::Config;
 use crate::error::AdapterError;
 use crate::override_role;
 use crate::plc::SharedPlc;
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
+use tokio::time::sleep;
 use warp::http::StatusCode;
 use warp::Filter;
 
@@ -54,9 +57,7 @@ struct ErrorResponse {
     error: String,
 }
 
-fn with_auth(
-    adapter_token: String,
-) -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
+fn with_auth(adapter_token: String) -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
     warp::header::optional("Authorization")
         .and(warp::any().map(move || adapter_token.clone()))
         .and_then(|auth_header: Option<String>, secret: String| async move {
@@ -105,6 +106,43 @@ fn apply_plc_signal(
     })
 }
 
+async fn check_and_apply_access(
+    request: CheckAccessRequest,
+    cfg: Config,
+    plc: SharedPlc,
+) -> Result<CheckAccessResponse, AdapterError> {
+    let pending_started_at = Instant::now();
+
+    {
+        let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
+        plc_guard.set_request_pending()?;
+    }
+
+    let backend = BackendClient::new(&cfg);
+    let allowed = backend
+        .check_access(&request.card_id, &request.machine_id, &request.command)
+        .await?;
+
+    let min_pending = Duration::from_millis(cfg.plc_request_pending_min_ms);
+    if pending_started_at.elapsed() < min_pending {
+        sleep(min_pending - pending_started_at.elapsed()).await;
+    }
+
+    {
+        let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
+        if allowed {
+            plc_guard.set_allow()?;
+        } else {
+            plc_guard.set_deny()?;
+        }
+        plc_guard.clear_request_pending()?;
+    }
+
+    Ok(CheckAccessResponse {
+        decision: if allowed { "ALLOW" } else { "DENY" }.to_string(),
+    })
+}
+
 pub fn create_filters(
     config: Config,
     plc: SharedPlc,
@@ -122,15 +160,17 @@ pub fn create_filters(
         .and(warp::body::json())
         .and(warp::any().map(move || trigger_plc_plc.clone()))
         .and(warp::any().map(move || trigger_plc_cfg.clone()))
-        .and_then(|request: TriggerRequest, plc: SharedPlc, cfg: Config| async move {
-            let _ = (&request.card_id, &request.machine_id, &request.command);
+        .and_then(
+            |request: TriggerRequest, plc: SharedPlc, cfg: Config| async move {
+                let _ = (&request.card_id, &request.machine_id, &request.command);
 
-            apply_plc_signal(plc, &cfg, request.decision.as_str())
-                .map(|payload| {
-                    warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK)
-                })
-                .map_err(warp::reject::custom)
-        });
+                apply_plc_signal(plc, &cfg, request.decision.as_str())
+                    .map(|payload| {
+                        warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK)
+                    })
+                    .map_err(warp::reject::custom)
+            },
+        );
 
     let override_cfg = config.clone();
     let override_plc = plc.clone();
@@ -138,38 +178,48 @@ pub fn create_filters(
         .and(warp::post())
         .and(warp::header::optional::<String>("X-Override-Token"))
         .and(warp::body::json())
-        .and_then(move |override_token: Option<String>, request: OverrideRequest| {
-            let cfg = override_cfg.clone();
-            let plc = override_plc.clone();
+        .and_then(
+            move |override_token: Option<String>, request: OverrideRequest| {
+                let cfg = override_cfg.clone();
+                let plc = override_plc.clone();
 
-            async move {
-                let passcode = request.passcode.as_deref();
-                let token = override_token.as_deref();
+                async move {
+                    let passcode = request.passcode.as_deref();
+                    let token = override_token.as_deref();
 
-                if !override_role::is_override_authorized(&cfg, token, passcode) {
-                    return Err(warp::reject::custom(AdapterError::OverrideAuth));
+                    if !override_role::is_override_authorized(&cfg, token, passcode) {
+                        return Err(warp::reject::custom(AdapterError::OverrideAuth));
+                    }
+
+                    let decision = request.command.as_deref().unwrap_or("ALLOW");
+                    let _ = request.reason.as_deref();
+
+                    apply_plc_signal(plc, &cfg, decision)
+                        .map(|payload| {
+                            warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK)
+                        })
+                        .map_err(warp::reject::custom)
                 }
+            },
+        );
 
-                let decision = request.command.as_deref().unwrap_or("ALLOW");
-                let _ = request.reason.as_deref();
-
-                apply_plc_signal(plc, &cfg, decision)
+    let check_access_plc = plc.clone();
+    let check_access_cfg = config.clone();
+    let check_access = warp::path!("check-access")
+        .and(warp::post())
+        .and(warp::query::<CheckAccessRequest>())
+        .and(warp::any().map(move || check_access_plc.clone()))
+        .and(warp::any().map(move || check_access_cfg.clone()))
+        .and_then(
+            |request: CheckAccessRequest, plc: SharedPlc, cfg: Config| async move {
+                check_and_apply_access(request, cfg, plc)
+                    .await
                     .map(|payload| {
                         warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK)
                     })
                     .map_err(warp::reject::custom)
-            }
-        });
-
-    let check_access = warp::path!("check-access")
-        .and(warp::query::<CheckAccessRequest>())
-        .and_then(|request: CheckAccessRequest| async move {
-            let _ = (&request.card_id, &request.machine_id, &request.command);
-
-            Ok::<_, warp::Rejection>(warp::reply::json(&CheckAccessResponse {
-                decision: "ALLOW".to_string(),
-            }))
-        });
+            },
+        );
 
     let routes = api.and(health.or(trigger_plc).or(trigger_override).or(check_access));
 
