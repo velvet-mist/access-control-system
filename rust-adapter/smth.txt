@@ -1,2 +1,0 @@
-Set-ExecutionPolicy -Scope Process Bypass
-.\run_adapter.ps1 -BackendUrl "http://<BACKEND_IP>:8000" -CognexHost "<COGNEX_IP>" -CognexPort 23 -UseRelease
