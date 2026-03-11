@@ -1,6 +1,7 @@
 use crate::backend::client::BackendClient;
 use crate::config::Config;
 use crate::connections::connection::KeyenceConnection;
+use crate::connections::read::{send_and_read, ResponseReader};
 use crate::error::AdapterError;
 use crate::override_role;
 use crate::plc::SharedPlc;
@@ -58,6 +59,7 @@ pub struct AuthorizeCommandResponse {
     pub decision: String,
     pub forwarded: bool,
     pub access_checked: bool,
+    pub machine_response: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -134,9 +136,29 @@ fn normalize_command(command: &str) -> String {
     }
 }
 
-fn forward_keyence_command(cfg: &Config, command: &str) -> Result<(), AdapterError> {
+fn forward_keyence_command(cfg: &Config, command: &str) -> Result<Option<String>, AdapterError> {
     let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port)?;
-    conn.send_command(command)
+    let response = send_and_read(&mut conn, command)?;
+
+    if response.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(error) = ResponseReader::parse_error(&response) {
+        return Err(AdapterError::PlcComm(format!(
+            "machine rejected command {}: {}",
+            command, error
+        )));
+    }
+
+    if !ResponseReader::is_success(&response) {
+        return Err(AdapterError::PlcComm(format!(
+            "unexpected machine response for {}: {}",
+            command, response
+        )));
+    }
+
+    Ok(Some(response))
 }
 
 async fn check_and_apply_access(
@@ -184,12 +206,13 @@ async fn authorize_and_forward_command(
     let command = normalize_command(&request.command);
 
     if !is_access_controlled_command(&command) {
-        forward_keyence_command(&cfg, &command)?;
+        let machine_response = forward_keyence_command(&cfg, &command)?;
         return Ok(AuthorizeCommandResponse {
             command,
             decision: "BYPASS".to_string(),
             forwarded: true,
             access_checked: false,
+            machine_response,
         });
     }
 
@@ -219,9 +242,9 @@ async fn authorize_and_forward_command(
     };
 
     let forward_result = if allowed {
-        forward_keyence_command(&cfg, &command).map(|_| true)
+        forward_keyence_command(&cfg, &command)
     } else {
-        Ok(false)
+        Ok(None)
     };
 
     let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
@@ -231,13 +254,15 @@ async fn authorize_and_forward_command(
         plc_guard.set_deny()?;
     }
     plc_guard.clear_request_pending()?;
-    let forwarded = forward_result?;
+    let machine_response = forward_result?;
+    let forwarded = allowed;
 
     Ok(AuthorizeCommandResponse {
         command,
         decision: if allowed { "ALLOW" } else { "DENY" }.to_string(),
         forwarded,
         access_checked: true,
+        machine_response,
     })
 }
 
@@ -389,7 +414,17 @@ pub async fn start_server(config: Config, plc: SharedPlc) -> Result<(), AdapterE
 
     println!("Starting HTTP server on {}", addr);
     let socket_addr: std::net::SocketAddr = addr.parse().map_err(|_| AdapterError::Config)?;
-    warp::serve(routes).run(socket_addr).await;
+    if std::net::TcpListener::bind(socket_addr).is_ok() {
+        warp::serve(routes).run(socket_addr).await;
+        return Ok(());
+    }
+
+    let fallback_addr = std::net::SocketAddr::from(([0, 0, 0, 0], config.server_port));
+    eprintln!(
+        "Server host {} is not available, falling back to {}",
+        config.server_host, fallback_addr
+    );
+    warp::serve(routes).run(fallback_addr).await;
 
     Ok(())
 }

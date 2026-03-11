@@ -1,7 +1,13 @@
+from fastapi import FastAPI
+from pathlib import Path
+import sys
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from controller.db.base_class import Base
 from controller.db.session import engine
 from controller.core.config import settings
-from fastapi import FastAPI
 
 import controller.db.models.user
 import controller.db.models.card
