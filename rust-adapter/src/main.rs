@@ -10,11 +10,20 @@ mod state;
 use api::start_server;
 use config::Config;
 use plc::create_plc_device;
+use std::env;
+#[cfg(feature = "embedded-python")]
 use pyo3::prelude::*;
+#[cfg(feature = "embedded-python")]
 use pyo3::types::PyModule;
 
 #[tokio::main]
 async fn main() {
+    // Load environment variables from .env in cwd, and fallback to project root.
+    let _ = dotenvy::dotenv();
+    if env::var("BACKEND_URL").is_err() {
+        let _ = dotenvy::from_filename("../.env");
+    }
+
     let cfg = Config::load();
 
     println!("Starting Rust adapter");
@@ -25,14 +34,24 @@ async fn main() {
     println!("HTTP Server: {}:{}", cfg.server_host, cfg.server_port);
 
     if cfg.run_embedded_python {
-        let py_module = cfg.python_module.clone();
-        let py_function = cfg.python_function.clone();
+        #[cfg(feature = "embedded-python")]
+        {
+            let py_module = cfg.python_module.clone();
+            let py_function = cfg.python_function.clone();
 
-        tokio::task::spawn_blocking(move || {
-            if let Err(e) = run_python(&py_module, &py_function) {
-                eprintln!("Embedded Python error: {:?}", e);
-            }
-        });
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = run_python(&py_module, &py_function) {
+                    eprintln!("Embedded Python error: {:?}", e);
+                }
+            });
+        }
+
+        #[cfg(not(feature = "embedded-python"))]
+        {
+            eprintln!(
+                "RUN_EMBEDDED_PYTHON=true but binary was built without feature 'embedded-python'"
+            );
+        }
     } else {
         println!("Embedded Python disabled (RUN_EMBEDDED_PYTHON=false)");
     }
@@ -50,6 +69,7 @@ async fn main() {
     }
 }
 
+#[cfg(feature = "embedded-python")]
 fn run_python(module_name: &str, function_name: &str) -> PyResult<()> {
     pyo3::Python::initialize();
 

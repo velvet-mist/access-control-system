@@ -3,6 +3,10 @@ name = "access-control-system"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+embedded-python = ["dep:pyo3"]
+
 [dependencies]
 tokio = { version = "1.49.0", features = ["full"] }
 reqwest = { version = "0.13.2", features = ["json"] }
@@ -14,12 +18,13 @@ tokio-util= { version = "0.7", features = ["codec"] }
 bytes= "1.11.1"
 anyhow="1.0.102"
 chrono ="0.4"
+dotenvy = "0.15.7"
 http-client = "6.5.3"
 rust-ethernet-ip = "0.6.2"
 windows-service = "0.8.0"
 jsonwebtoken = "10.3.0"
 warp = { version = "0.4.2", features = ["websocket", "server"] }
-pyo3 = { version = "0.28.2", features = ["auto-initialize"] }
+pyo3 = { version = "0.28.2", features = ["auto-initialize"], optional = true }
 
 rmodbus = "0.12.2"
 [dependencies.ldap3]

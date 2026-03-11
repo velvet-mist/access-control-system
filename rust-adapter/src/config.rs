@@ -22,7 +22,9 @@ pub struct Config {
     pub keyence_port: u16,
     // Embedded Python settings
     pub run_embedded_python: bool,
+    #[cfg(feature = "embedded-python")]
     pub python_module: String,
+    #[cfg(feature = "embedded-python")]
     pub python_function: String,
 }
 
@@ -46,7 +48,9 @@ impl Config {
             keyence_host: env_or("KEYENCE_HOST", "127.0.0.1"),
             keyence_port: env_parse_or("KEYENCE_PORT", 9004),
             run_embedded_python: env_bool_or("RUN_EMBEDDED_PYTHON", false),
+            #[cfg(feature = "embedded-python")]
             python_module: env_or("PYTHON_MODULE", "controller.main"),
+            #[cfg(feature = "embedded-python")]
             python_function: env_or("PYTHON_FUNCTION", "start_application"),
         }
     }
