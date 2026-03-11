@@ -1,5 +1,6 @@
 use crate::backend::client::BackendClient;
 use crate::config::Config;
+use crate::connections::connection::KeyenceConnection;
 use crate::error::AdapterError;
 use crate::override_role;
 use crate::plc::SharedPlc;
@@ -42,6 +43,21 @@ pub struct CheckAccessRequest {
 #[derive(Debug, Serialize)]
 pub struct CheckAccessResponse {
     pub decision: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuthorizeCommandRequest {
+    pub card_id: String,
+    pub machine_id: String,
+    pub command: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuthorizeCommandResponse {
+    pub command: String,
+    pub decision: String,
+    pub forwarded: bool,
+    pub access_checked: bool,
 }
 
 #[allow(dead_code)]
@@ -106,6 +122,15 @@ fn apply_plc_signal(
     })
 }
 
+fn is_access_controlled_command(command: &str) -> bool {
+    matches!(command, "SO" | "RO")
+}
+
+fn forward_keyence_command(cfg: &Config, command: &str) -> Result<(), AdapterError> {
+    let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port)?;
+    conn.send_command(command)
+}
+
 async fn check_and_apply_access(
     request: CheckAccessRequest,
     cfg: Config,
@@ -140,6 +165,71 @@ async fn check_and_apply_access(
 
     Ok(CheckAccessResponse {
         decision: if allowed { "ALLOW" } else { "DENY" }.to_string(),
+    })
+}
+
+async fn authorize_and_forward_command(
+    request: AuthorizeCommandRequest,
+    cfg: Config,
+    plc: SharedPlc,
+) -> Result<AuthorizeCommandResponse, AdapterError> {
+    let command = request.command.trim().to_ascii_uppercase();
+
+    if !is_access_controlled_command(&command) {
+        forward_keyence_command(&cfg, &command)?;
+        return Ok(AuthorizeCommandResponse {
+            command,
+            decision: "BYPASS".to_string(),
+            forwarded: true,
+            access_checked: false,
+        });
+    }
+
+    let pending_started_at = Instant::now();
+    {
+        let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
+        plc_guard.set_request_pending()?;
+    }
+
+    let backend = BackendClient::new(&cfg);
+    let allowed_result = backend
+        .check_access(&request.card_id, &request.machine_id, &command)
+        .await;
+
+    let min_pending = Duration::from_millis(cfg.plc_request_pending_min_ms);
+    if pending_started_at.elapsed() < min_pending {
+        sleep(min_pending - pending_started_at.elapsed()).await;
+    }
+
+    let allowed = match allowed_result {
+        Ok(value) => value,
+        Err(err) => {
+            let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
+            plc_guard.clear_request_pending()?;
+            return Err(err);
+        }
+    };
+
+    let forward_result = if allowed {
+        forward_keyence_command(&cfg, &command).map(|_| true)
+    } else {
+        Ok(false)
+    };
+
+    let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
+    if allowed && forward_result.is_ok() {
+        plc_guard.set_allow()?;
+    } else {
+        plc_guard.set_deny()?;
+    }
+    plc_guard.clear_request_pending()?;
+    let forwarded = forward_result?;
+
+    Ok(AuthorizeCommandResponse {
+        command,
+        decision: if allowed { "ALLOW" } else { "DENY" }.to_string(),
+        forwarded,
+        access_checked: true,
     })
 }
 
@@ -221,7 +311,32 @@ pub fn create_filters(
             },
         );
 
-    let routes = api.and(health.or(trigger_plc).or(trigger_override).or(check_access));
+    let authorize_cmd_plc = plc.clone();
+    let authorize_cmd_cfg = config.clone();
+    let authorize_command = warp::path!("authorize-command")
+        .and(warp::post())
+        .and(auth.clone())
+        .and(warp::body::json())
+        .and(warp::any().map(move || authorize_cmd_plc.clone()))
+        .and(warp::any().map(move || authorize_cmd_cfg.clone()))
+        .and_then(
+            |request: AuthorizeCommandRequest, plc: SharedPlc, cfg: Config| async move {
+                authorize_and_forward_command(request, cfg, plc)
+                    .await
+                    .map(|payload| {
+                        warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK)
+                    })
+                    .map_err(warp::reject::custom)
+            },
+        );
+
+    let routes = api.and(
+        health
+            .or(trigger_plc)
+            .or(trigger_override)
+            .or(check_access)
+            .or(authorize_command),
+    );
 
     routes.recover(handle_rejection)
 }

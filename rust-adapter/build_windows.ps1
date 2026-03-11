@@ -29,7 +29,7 @@ Files:
 - run_adapter.bat
 
 Run:
-run_adapter.bat http://<BACKEND_IP>:8000 <COGNEX_IP> 23
+run_adapter.bat http://<BACKEND_IP>:8000 <KEYENCE_IP> 9004
 "@
 
 $readmePath = Join-Path $distDir "README.txt"

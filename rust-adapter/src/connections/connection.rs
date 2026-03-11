@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
 use crate::error::AdapterError;
@@ -13,11 +13,11 @@ impl KeyenceConnection {
     /// Create a new TCP connection to the Keyence PLC
     pub fn new(host: &str, port: u16) -> Result<Self, AdapterError> {
         let address = format!("{}:{}", host, port);
-        let stream = TcpStream::connect_timeout(
-            &address.parse().map_err(|e| AdapterError::PlcComm(e.to_string()))?,
-            Duration::from_secs(5),
-        )
-        .map_err(|e| AdapterError::PlcComm(e.to_string()))?;
+        let socket_addr: SocketAddr = address
+            .parse::<SocketAddr>()
+            .map_err(|e| AdapterError::PlcComm(e.to_string()))?;
+        let stream = TcpStream::connect_timeout(&socket_addr, Duration::from_secs(5))
+            .map_err(|e| AdapterError::PlcComm(e.to_string()))?;
 
         stream
             .set_read_timeout(Some(Duration::from_secs(2)))
@@ -37,6 +37,7 @@ impl KeyenceConnection {
     }
 
     /// Read response bytes from the PLC
+    #[allow(dead_code)]
     pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, AdapterError> {
         self.stream
             .read(buffer)
@@ -50,11 +51,13 @@ impl KeyenceConnection {
     }
 
     /// Get a mutable reference to the underlying stream for more control
+    #[allow(dead_code)]
     pub fn stream_mut(&mut self) -> &mut TcpStream {
         &mut self.stream
     }
 
     /// Check if the connection is still alive
+    #[allow(dead_code)]
     pub fn is_connected(&self) -> bool {
         // Simple check - in production you'd use ping or keepalive
         true
@@ -90,4 +93,3 @@ mod tests {
         assert!(result.is_err() || result.unwrap().is_connected());
     }
 }
-

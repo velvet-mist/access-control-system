@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::connections::connection::KeyenceConnection;
 use crate::error::AdapterError;
 
@@ -65,32 +67,32 @@ impl KeyenceCommander {
 
     /// Send trigger all command
     pub fn trigger_all(conn: &mut KeyenceConnection) -> Result<(), AdapterError> {
-        conn.send_command(KeyenceCommand::TriggerAll)
+        conn.send_command(KeyenceCommand::TriggerAll.to_string())
     }
 
     /// Enter run mode
     pub fn run_mode(conn: &mut KeyenceConnection) -> Result<(), AdapterError> {
-        conn.send_command(KeyenceCommand::RunMode)
+        conn.send_command(KeyenceCommand::RunMode.to_string())
     }
 
     /// Enter setup mode
     pub fn setup_mode(conn: &mut KeyenceConnection) -> Result<(), AdapterError> {
-        conn.send_command(KeyenceCommand::SetupMode)
+        conn.send_command(KeyenceCommand::SetupMode.to_string())
     }
 
     /// Enter test mode
     pub fn test_mode(conn: &mut KeyenceConnection) -> Result<(), AdapterError> {
-        conn.send_command(KeyenceCommand::TestMode)
+        conn.send_command(KeyenceCommand::TestMode.to_string())
     }
 
     /// Reset the PLC
     pub fn reset(conn: &mut KeyenceConnection) -> Result<(), AdapterError> {
-        conn.send_command(KeyenceCommand::Reset)
+        conn.send_command(KeyenceCommand::Reset.to_string())
     }
 
     /// Get status from PLC
     pub fn status(conn: &mut KeyenceConnection) -> Result<(), AdapterError> {
-        conn.send_command(KeyenceCommand::Status)
+        conn.send_command(KeyenceCommand::Status.to_string())
     }
 
     /// Send custom command string
@@ -131,4 +133,3 @@ mod tests {
         assert!(KeyenceCommand::Status.expects_response());
     }
 }
-

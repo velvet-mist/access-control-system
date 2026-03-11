@@ -10,7 +10,7 @@ pub async fn run(cfg: Config) -> Result<(), AdapterError> {
     let plc = create_plc_device(&cfg)?;
 
     println!("Adapter running (IDLE)");
-    println!("PLC type configured: {}", cfg.plc_type);
+    println!("PLC type configured: keyence");
 
     let card_id = "CARD123";
     let command = "START";

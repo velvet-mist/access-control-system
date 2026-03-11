@@ -1,6 +1,7 @@
 mod api;
 mod backend;
 mod config;
+mod connections;
 mod error;
 mod override_role;
 mod plc;
@@ -19,12 +20,8 @@ async fn main() {
     println!("Starting Rust adapter");
     println!("Backend URL: {}", cfg.backend_url);
     println!("Machine ID: {}", cfg.machine_id);
-    println!("PLC Type: {}", cfg.plc_type);
-    if cfg.plc_type == "keyence" {
-        println!("PLC Port: {} @ {} baud", cfg.plc_port, cfg.plc_baudrate);
-    } else {
-        println!("Cognex Endpoint: {}:{}", cfg.cognex_host, cfg.cognex_port);
-    }
+    println!("PLC Type: keyence");
+    println!("PLC Port: {} @ {} baud", cfg.plc_port, cfg.plc_baudrate);
     println!("HTTP Server: {}:{}", cfg.server_host, cfg.server_port);
 
     if cfg.run_embedded_python {
