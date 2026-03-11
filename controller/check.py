@@ -1,5 +1,15 @@
-from controller.db.deps import get_db
 from controller.db.models.adapter import adapters
+from controller.db.session import SessionLocal
 
-for adapter in db.query(adapters).all():
-    print(f"Token: {adapter.token}, Status: {adapter.status}")
+
+def main() -> None:
+    db = SessionLocal()
+    try:
+        for adapter in db.query(adapters).all():
+            print(f"Token: {adapter.token}, Status: {adapter.status}")
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    main()

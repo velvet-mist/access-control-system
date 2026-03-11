@@ -1,13 +1,15 @@
-from fastapi import FastAPI
+from fastapi import APIRouter
 from pydantic import BaseModel
 
-app = FastAPI()
+router = APIRouter()
 
-class InspectionPayLoad(BaseModel):
+
+class InspectionPayload(BaseModel):
     device_id: str
     result: str
     raw: str
 
-@app.post("\Inspection")
-async def receive_inspection(payload: InspectionPayLoad):
-    return { "status": "logged"}
+
+@router.post("/inspection")
+async def receive_inspection(payload: InspectionPayload):
+    return {"status": "logged", "device_id": payload.device_id}

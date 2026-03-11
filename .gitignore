@@ -6,3 +6,7 @@ alembic.ini
 .env
 seed_test_data.py
 rust-adapter/src/main1.rs
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
