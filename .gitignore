@@ -8,3 +8,4 @@ alembic.ini
 .gitignore
 seed_test_data.py
 rust-adapter/src/main1.rs
+.env
