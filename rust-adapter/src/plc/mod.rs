@@ -1,6 +1,4 @@
 pub mod keyence;
-mod plc;
-
 use crate::config::Config;
 use crate::error::AdapterError;
 use std::sync::{Arc, Mutex};

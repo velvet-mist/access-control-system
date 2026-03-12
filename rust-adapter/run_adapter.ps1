@@ -1,31 +1,37 @@
 param(
-    [string]$BackendUrl = "http://127.0.0.1:8000",
-    [string]$MachineId = "MACHINE_1",
-    [string]$AdapterToken = "done",
-    [string]$OverrideToken = "override-token",
-    [string]$OverridePasscode = "1234",
-    [string]$ServerHost = "0.0.0.0",
-    [int]$ServerPort = 8080,
-    [string]$KeyenceHost = "127.0.0.1",
-    [int]$KeyencePort = 9004,
-    [string]$PlcPort = "COM3",
-    [int]$PlcBaudrate = 9600,
+    [string]$BackendUrl = "",
+    [string]$MachineId = "",
+    [string]$AdapterToken = "",
+    [string]$OverrideToken = "",
+    [string]$OverridePasscode = "",
+    [string]$ServerHost = "",
+    [string]$ServerPort = "",
+    [string]$KeyenceHost = "",
+    [string]$KeyencePort = "",
+    [string]$PlcPort = "",
+    [string]$PlcBaudrate = "",
+    [string]$PlcHost = "",
+    [string]$PlcTcpPort = "",
+    [string]$PlcSlaveAddr = "",
     [switch]$UseRelease
 )
 
 $ErrorActionPreference = "Stop"
 
-$env:BACKEND_URL = $BackendUrl
-$env:MACHINE_ID = $MachineId
-$env:ADAPTER_TOKEN = $AdapterToken
-$env:OVERRIDE_TOKEN = $OverrideToken
-$env:OVERRIDE_PASSCODE = $OverridePasscode
-$env:SERVER_HOST = $ServerHost
-$env:SERVER_PORT = "$ServerPort"
-$env:KEYENCE_HOST = $KeyenceHost
-$env:KEYENCE_PORT = "$KeyencePort"
-$env:PLC_PORT = $PlcPort
-$env:PLC_BAUDRATE = "$PlcBaudrate"
+if ($BackendUrl) { $env:BACKEND_URL = $BackendUrl }
+if ($MachineId) { $env:MACHINE_ID = $MachineId }
+if ($AdapterToken) { $env:ADAPTER_TOKEN = $AdapterToken }
+if ($OverrideToken) { $env:OVERRIDE_TOKEN = $OverrideToken }
+if ($OverridePasscode) { $env:OVERRIDE_PASSCODE = $OverridePasscode }
+if ($ServerHost) { $env:SERVER_HOST = $ServerHost }
+if ($ServerPort) { $env:SERVER_PORT = "$ServerPort" }
+if ($KeyenceHost) { $env:KEYENCE_HOST = $KeyenceHost }
+if ($KeyencePort) { $env:KEYENCE_PORT = "$KeyencePort" }
+if ($PlcPort) { $env:PLC_PORT = $PlcPort }
+if ($PlcBaudrate) { $env:PLC_BAUDRATE = "$PlcBaudrate" }
+if ($PlcHost) { $env:PLC_HOST = $PlcHost }
+if ($PlcTcpPort) { $env:PLC_TCP_PORT = "$PlcTcpPort" }
+if ($PlcSlaveAddr) { $env:PLC_SLAVE_ADDR = "$PlcSlaveAddr" }
 $env:RUN_EMBEDDED_PYTHON = "false"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -35,6 +41,8 @@ Write-Host "Starting adapter with:"
 Write-Host "BACKEND_URL=$env:BACKEND_URL"
 Write-Host "KEYENCE_HOST=$env:KEYENCE_HOST"
 Write-Host "KEYENCE_PORT=$env:KEYENCE_PORT"
+Write-Host "PLC_HOST=$env:PLC_HOST"
+Write-Host "PLC_TCP_PORT=$env:PLC_TCP_PORT"
 Write-Host "PLC_PORT=$env:PLC_PORT"
 Write-Host "PLC_BAUDRATE=$env:PLC_BAUDRATE"
 Write-Host "SERVER_PORT=$env:SERVER_PORT"

@@ -26,6 +26,9 @@ pub enum AdapterError {
 
     #[error("Override authorization failed")]
     OverrideAuth,
+
+    #[error("Protected command requires prior authorization: {0}")]
+    ProtectedCommand(String),
 }
 
 impl Reject for AdapterError {}

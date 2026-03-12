@@ -27,6 +27,11 @@ class RegisterCardRequest(BaseModel):
     user_name: str
     role_name: str
 
+class MachineCommandRequest(BaseModel):
+    card_id: str
+    command: str
+    machine_id: str = DEFAULT_MACHINE_ID
+
 
 @router.api_route("/check-access", methods=["GET", "POST"])
 async def check_access_endpoint(
@@ -149,7 +154,7 @@ async def trigger_plc(
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
-                f"{RUST_ADAPTER_URL}/api/authorize-command",
+                f"{RUST_ADAPTER_URL}/api/machine-command",
                 json={
                     "card_id": card_id,
                     "machine_id": machine_id,
@@ -171,6 +176,45 @@ async def trigger_plc(
                 "forwarded": plc_response.get("forwarded", False),
                 "access_checked": plc_response.get("access_checked", False),
                 "command": plc_response.get("command", normalized_command),
+            }
+
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to connect to Rust adapter: {str(e)}"
+        )
+
+
+@router.post("/trigger-inspection")
+async def trigger_inspection(
+    request: MachineCommandRequest,
+    adapter=Depends(verify_adapter),
+):
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{RUST_ADAPTER_URL}/api/machine-command",
+                json={
+                    "card_id": request.card_id,
+                    "machine_id": request.machine_id,
+                    "command": "INSPECT",
+                },
+                headers={"Authorization": f"Bearer {RUST_ADAPTER_TOKEN}"}
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Rust adapter error: {response.text}"
+                )
+
+            machine_response = response.json()
+            return {
+                "decision": machine_response.get("decision"),
+                "forwarded": machine_response.get("forwarded", False),
+                "access_checked": machine_response.get("access_checked", False),
+                "command": machine_response.get("command", "INSPECT"),
+                "machine_sequence": machine_response.get("machine_sequence", []),
             }
 
     except httpx.RequestError as e:

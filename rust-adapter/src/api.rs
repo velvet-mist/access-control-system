@@ -54,12 +54,19 @@ pub struct AuthorizeCommandRequest {
 }
 
 #[derive(Debug, Serialize)]
+pub struct MachineSequenceResponse {
+    pub command: String,
+    pub response: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct AuthorizeCommandResponse {
     pub command: String,
     pub decision: String,
     pub forwarded: bool,
     pub access_checked: bool,
     pub machine_response: Option<String>,
+    pub machine_sequence: Vec<MachineSequenceResponse>,
 }
 
 #[allow(dead_code)]
@@ -132,11 +139,26 @@ fn normalize_command(command: &str) -> String {
     match command.trim().to_ascii_uppercase().as_str() {
         "RO" | "R0" => "R0".to_string(),
         "SO" | "S0" => "S0".to_string(),
+        "INSPECT" | "TRIGGER_INSPECTION" => "INSPECT".to_string(),
         other => other.to_string(),
     }
 }
 
-fn forward_keyence_command(cfg: &Config, command: &str) -> Result<Option<String>, AdapterError> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommandPermission {
+    Checked,
+    Unchecked,
+}
+
+fn forward_keyence_command(
+    cfg: &Config,
+    command: &str,
+    permission: CommandPermission,
+) -> Result<Option<String>, AdapterError> {
+    if permission == CommandPermission::Unchecked && is_access_controlled_command(command) {
+        return Err(AdapterError::ProtectedCommand(command.to_string()));
+    }
+
     let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port)?;
     let response = send_and_read(&mut conn, command)?;
 
@@ -159,6 +181,47 @@ fn forward_keyence_command(cfg: &Config, command: &str) -> Result<Option<String>
     }
 
     Ok(Some(response))
+}
+
+fn run_machine_sequence(
+    cfg: &Config,
+    commands: &[&str],
+    permission: CommandPermission,
+) -> Result<Vec<MachineSequenceResponse>, AdapterError> {
+    let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port)?;
+    let mut responses = Vec::with_capacity(commands.len());
+
+    for command in commands {
+        if permission == CommandPermission::Unchecked && is_access_controlled_command(command) {
+            return Err(AdapterError::ProtectedCommand((*command).to_string()));
+        }
+
+        let response = send_and_read(&mut conn, command)?;
+        if let Some(error) = ResponseReader::parse_error(&response) {
+            return Err(AdapterError::PlcComm(format!(
+                "machine rejected command {}: {}",
+                command, error
+            )));
+        }
+
+        if !response.is_empty() && !ResponseReader::is_success(&response) {
+            return Err(AdapterError::PlcComm(format!(
+                "unexpected machine response for {}: {}",
+                command, response
+            )));
+        }
+
+        responses.push(MachineSequenceResponse {
+            command: (*command).to_string(),
+            response: if response.is_empty() {
+                None
+            } else {
+                Some(response)
+            },
+        });
+    }
+
+    Ok(responses)
 }
 
 async fn check_and_apply_access(
@@ -206,13 +269,26 @@ async fn authorize_and_forward_command(
     let command = normalize_command(&request.command);
 
     if !is_access_controlled_command(&command) {
-        let machine_response = forward_keyence_command(&cfg, &command)?;
+        let machine_sequence = if command == "INSPECT" {
+            run_machine_sequence(&cfg, &["RS", "TA"], CommandPermission::Unchecked)?
+        } else {
+            let machine_response =
+                forward_keyence_command(&cfg, &command, CommandPermission::Unchecked)?;
+            vec![MachineSequenceResponse {
+                command: command.clone(),
+                response: machine_response.clone(),
+            }]
+        };
+
         return Ok(AuthorizeCommandResponse {
             command,
             decision: "BYPASS".to_string(),
             forwarded: true,
             access_checked: false,
-            machine_response,
+            machine_response: machine_sequence
+                .last()
+                .and_then(|step| step.response.clone()),
+            machine_sequence,
         });
     }
 
@@ -242,7 +318,14 @@ async fn authorize_and_forward_command(
     };
 
     let forward_result = if allowed {
-        forward_keyence_command(&cfg, &command)
+        forward_keyence_command(&cfg, &command, CommandPermission::Checked).map(|response| {
+            response.map(|value| {
+                vec![MachineSequenceResponse {
+                    command: command.clone(),
+                    response: Some(value),
+                }]
+            })
+        })
     } else {
         Ok(None)
     };
@@ -254,7 +337,7 @@ async fn authorize_and_forward_command(
         plc_guard.set_deny()?;
     }
     plc_guard.clear_request_pending()?;
-    let machine_response = forward_result?;
+    let machine_sequence = forward_result?;
     let forwarded = allowed;
 
     Ok(AuthorizeCommandResponse {
@@ -262,8 +345,31 @@ async fn authorize_and_forward_command(
         decision: if allowed { "ALLOW" } else { "DENY" }.to_string(),
         forwarded,
         access_checked: true,
-        machine_response,
+        machine_response: machine_sequence
+            .as_ref()
+            .and_then(|steps| steps.last())
+            .and_then(|step| step.response.clone()),
+        machine_sequence: machine_sequence.unwrap_or_default(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protected_commands_are_normalized() {
+        assert_eq!(normalize_command("ro"), "R0");
+        assert_eq!(normalize_command("SO"), "S0");
+    }
+
+    #[test]
+    fn protected_commands_require_checked_permission() {
+        let cfg = Config::load();
+        let result = forward_keyence_command(&cfg, "S0", CommandPermission::Unchecked);
+
+        assert!(matches!(result, Err(AdapterError::ProtectedCommand(cmd)) if cmd == "S0"));
+    }
 }
 
 pub fn create_filters(
@@ -346,8 +452,7 @@ pub fn create_filters(
 
     let authorize_cmd_plc = plc.clone();
     let authorize_cmd_cfg = config.clone();
-    let authorize_command = warp::path!("authorize-command")
-        .and(warp::post())
+    let authorize_command_handler = warp::post()
         .and(auth.clone())
         .and(warp::body::json())
         .and(warp::any().map(move || authorize_cmd_plc.clone()))
@@ -363,11 +468,17 @@ pub fn create_filters(
             },
         );
 
+    let authorize_command = warp::path!("authorize-command")
+        .and(authorize_command_handler.clone());
+
+    let machine_command = warp::path!("machine-command").and(authorize_command_handler);
+
     let routes = api.and(
         health
             .or(trigger_plc)
             .or(trigger_override)
             .or(check_access)
+            .or(machine_command)
             .or(authorize_command),
     );
 

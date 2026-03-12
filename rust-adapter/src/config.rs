@@ -12,6 +12,8 @@ pub struct Config {
     pub server_port: u16,
     // PLC selection/settings
     pub plc_port: String,
+    pub plc_host: String,
+    pub plc_tcp_port: u16,
     pub plc_baudrate: u32,
     pub plc_slave_addr: u8,
     pub plc_register_request_pending: u16,
@@ -39,6 +41,8 @@ impl Config {
             server_host: env_or("SERVER_HOST", "0.0.0.0"),
             server_port: env_parse_or("SERVER_PORT", 8080),
             plc_port: env_or("PLC_PORT", default_serial_port()),
+            plc_host: env_or("PLC_HOST", ""),
+            plc_tcp_port: env_parse_or("PLC_TCP_PORT", 502),
             plc_baudrate: env_parse_or("PLC_BAUDRATE", 9600),
             plc_slave_addr: env_parse_or("PLC_SLAVE_ADDR", 1),
             plc_register_request_pending: env_parse_or("PLC_REGISTER_REQUEST_PENDING", 102),
@@ -53,6 +57,10 @@ impl Config {
             #[cfg(feature = "embedded-python")]
             python_function: env_or("PYTHON_FUNCTION", "start_application"),
         }
+    }
+
+    pub fn uses_plc_tcp(&self) -> bool {
+        !self.plc_host.trim().is_empty()
     }
 }
 
