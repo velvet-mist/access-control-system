@@ -5,7 +5,6 @@ mod connections;
 mod error;
 mod override_role;
 mod plc;
-mod state;
 
 use api::start_server;
 use config::Config;
@@ -198,3 +197,13 @@ fn run_python(module_name: &str, function_name: &str) -> PyResult<()> {
         Ok(())
     })
 }
+//         let n = keyence_stream.readable().await?;
+//         let size = keyence_stream.try_read(&mut response)?;
+
+//         let response_str = String::from_utf8_lossy(&response[..size]);
+
+//         println!("Keyence response: {}", response_str);
+//     }
+
+//     Ok(())
+// }

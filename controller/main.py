@@ -35,7 +35,13 @@ def start_application():
 
 app = start_application()
 
+ALLOWED_COMMANDS = ["TA", "TL", "T1", "T2"]
 
-@app.get("/")
-def home():
-    return {"msg": "works?"}
+@app.post("/authorize")
+def authorize(data: dict):
+    cmd = data["command"]
+
+    if cmd in ALLOWED_COMMANDS:
+        return {"allowed": True}
+
+    return {"allowed": False}
