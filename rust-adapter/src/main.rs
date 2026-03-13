@@ -5,6 +5,7 @@ mod connections;
 mod error;
 mod override_role;
 mod plc;
+mod tcp_handler;
 
 use api::start_server;
 use config::Config;
@@ -17,6 +18,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
+use tcp_handler::tcp::start_tcp_proxy;
 
 #[tokio::main]
 async fn main() {
@@ -25,6 +27,8 @@ async fn main() {
         "MACHINE_ID",
         "SERVER_HOST",
         "SERVER_PORT",
+        "TCP_PROXY_HOST",
+        "TCP_PROXY_PORT",
         "KEYENCE_HOST",
         "KEYENCE_PORT",
         "PLC_HOST",
@@ -53,6 +57,11 @@ async fn main() {
     }
     println!("Keyence TCP: {}:{}", cfg.keyence_host, cfg.keyence_port);
     println!("HTTP Server: {}:{}", cfg.server_host, cfg.server_port);
+    if let Some(port) = cfg.tcp_proxy_port {
+        println!("TCP Proxy: {}:{}", cfg.tcp_proxy_host, port);
+    } else {
+        println!("TCP Proxy: disabled");
+    }
     log_config_sources(&shell_env, &local_env, &root_env);
     log_startup_diagnostics(&cfg);
 
@@ -86,6 +95,15 @@ async fn main() {
             return;
         }
     };
+
+    if cfg.tcp_proxy_enabled() {
+        let tcp_cfg = cfg.clone();
+        tokio::spawn(async move {
+            if let Err(err) = start_tcp_proxy(tcp_cfg).await {
+                eprintln!("TCP proxy error: {}", err);
+            }
+        });
+    }
 
     if let Err(e) = start_server(cfg, plc).await {
         eprintln!("Server error: {}", e);
@@ -130,6 +148,8 @@ fn log_config_sources(
     println!("Config sources:");
     for key in [
         "SERVER_PORT",
+        "TCP_PROXY_HOST",
+        "TCP_PROXY_PORT",
         "KEYENCE_HOST",
         "KEYENCE_PORT",
         "PLC_HOST",
@@ -197,13 +217,3 @@ fn run_python(module_name: &str, function_name: &str) -> PyResult<()> {
         Ok(())
     })
 }
-//         let n = keyence_stream.readable().await?;
-//         let size = keyence_stream.try_read(&mut response)?;
-
-//         let response_str = String::from_utf8_lossy(&response[..size]);
-
-//         println!("Keyence response: {}", response_str);
-//     }
-
-//     Ok(())
-// }

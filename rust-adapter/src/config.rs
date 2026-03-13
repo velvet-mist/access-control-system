@@ -10,6 +10,9 @@ pub struct Config {
     // HTTP Server settings
     pub server_host: String,
     pub server_port: u16,
+    // TCP proxy settings
+    pub tcp_proxy_host: String,
+    pub tcp_proxy_port: Option<u16>,
     // PLC selection/settings
     pub plc_port: String,
     pub plc_host: String,
@@ -40,6 +43,8 @@ impl Config {
             machine_id: env_or("MACHINE_ID", "MACHINE_1"),
             server_host: env_or("SERVER_HOST", "0.0.0.0"),
             server_port: env_parse_or("SERVER_PORT", 8080),
+            tcp_proxy_host: env_or("TCP_PROXY_HOST", "0.0.0.0"),
+            tcp_proxy_port: env_parse_optional("TCP_PROXY_PORT"),
             plc_port: env_or("PLC_PORT", default_serial_port()),
             plc_host: env_or("PLC_HOST", ""),
             plc_tcp_port: env_parse_or("PLC_TCP_PORT", 502),
@@ -62,6 +67,10 @@ impl Config {
     pub fn uses_plc_tcp(&self) -> bool {
         !self.plc_host.trim().is_empty()
     }
+
+    pub fn tcp_proxy_enabled(&self) -> bool {
+        self.tcp_proxy_port.is_some()
+    }
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -76,6 +85,13 @@ where
         .ok()
         .and_then(|v| v.parse::<T>().ok())
         .unwrap_or(default)
+}
+
+fn env_parse_optional<T>(key: &str) -> Option<T>
+where
+    T: std::str::FromStr,
+{
+    env::var(key).ok().and_then(|v| v.parse::<T>().ok())
 }
 
 fn env_bool_or(key: &str, default: bool) -> bool {
