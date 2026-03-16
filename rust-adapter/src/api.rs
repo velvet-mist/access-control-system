@@ -159,7 +159,7 @@ fn forward_keyence_command(
         return Err(AdapterError::ProtectedCommand(command.to_string()));
     }
 
-    let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port)?;
+    let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port);
     let response = send_and_read(&mut conn, command)?;
 
     if response.is_empty() {
@@ -188,7 +188,7 @@ fn run_machine_sequence(
     commands: &[&str],
     permission: CommandPermission,
 ) -> Result<Vec<MachineSequenceResponse>, AdapterError> {
-    let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port)?;
+    let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port);
     let mut responses = Vec::with_capacity(commands.len());
 
     for command in commands {

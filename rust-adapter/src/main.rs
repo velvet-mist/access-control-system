@@ -10,6 +10,7 @@ mod tcp_handler;
 use api::start_server;
 use config::Config;
 use plc::create_plc_device;
+use tcp_handler::tcp::{new_access_state, start_tcp_proxy};
 #[cfg(feature = "embedded-python")]
 use pyo3::prelude::*;
 #[cfg(feature = "embedded-python")]
@@ -18,7 +19,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
-use tcp_handler::tcp::start_tcp_proxy;
 
 #[tokio::main]
 async fn main() {
@@ -51,7 +51,7 @@ async fn main() {
     println!("Machine ID: {}", cfg.machine_id);
     println!("PLC Type: keyence");
     if cfg.uses_plc_tcp() {
-        println!("PLC Transport: TCP {}:{}", cfg.plc_host, cfg.plc_tcp_port);
+        println!("PLC Transport: TCP {}:{}", cfg.keyence_host, cfg.keyence_port);
     } else {
         println!("PLC Transport: Serial {} @ {} baud", cfg.plc_port, cfg.plc_baudrate);
     }
@@ -96,10 +96,15 @@ async fn main() {
         }
     };
 
+    // Shared access state — granted by the API when a badge scan is approved,
+    // consumed (revoked) when Keyence sends R0 or S0.
+    let access = new_access_state();
+
     if cfg.tcp_proxy_enabled() {
         let tcp_cfg = cfg.clone();
+        let tcp_access = access.clone();
         tokio::spawn(async move {
-            if let Err(err) = start_tcp_proxy(tcp_cfg).await {
+            if let Err(err) = start_tcp_proxy(tcp_cfg, tcp_access).await {
                 eprintln!("TCP proxy error: {}", err);
             }
         });
@@ -177,15 +182,25 @@ fn log_startup_diagnostics(cfg: &Config) {
     println!("Startup diagnostics:");
 
     if cfg.uses_plc_tcp() {
-        let plc_address = format!("{}:{}", cfg.plc_host, cfg.plc_tcp_port);
-        match plc_address.parse::<SocketAddr>() {
+        // PLC is using Keyence TCP transport — check keyence_host:keyence_port only.
+        // The old plc_host:plc_tcp_port (Modbus :502) check is intentionally skipped
+        // because the Keyence unit does not expose Modbus TCP.
+        let address = format!("{}:{}", cfg.keyence_host, cfg.keyence_port);
+        match address.parse::<SocketAddr>() {
             Ok(socket_addr) => {
                 match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(3)) {
-                    Ok(_) => println!("  PLC TCP check: OK ({})", plc_address),
-                    Err(err) => eprintln!("  PLC TCP check: FAILED ({}) - {}", plc_address, err),
+                    Ok(_) => println!("  PLC TCP check: OK ({})", address),
+                    Err(err) => {
+                        eprintln!("  PLC TCP check: FAILED ({}) - {}", address, err);
+                        eprintln!("  Cannot reach Keyence unit — aborting startup.");
+                        std::process::exit(1);
+                    }
                 }
             }
-            Err(err) => eprintln!("  PLC TCP check: FAILED ({}) - {}", plc_address, err),
+            Err(err) => {
+                eprintln!("  PLC TCP check: FAILED ({}) - {}", address, err);
+                std::process::exit(1);
+            }
         }
     } else {
         match serialport::new(&cfg.plc_port, cfg.plc_baudrate)
@@ -195,15 +210,20 @@ fn log_startup_diagnostics(cfg: &Config) {
             Ok(_) => println!("  PLC serial check: OK ({})", cfg.plc_port),
             Err(err) => eprintln!("  PLC serial check: FAILED ({}) - {}", cfg.plc_port, err),
         }
-    }
 
-    let address = format!("{}:{}", cfg.keyence_host, cfg.keyence_port);
-    match address.parse::<SocketAddr>() {
-        Ok(socket_addr) => match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(3)) {
-            Ok(_) => println!("  Keyence TCP check: OK ({})", address),
+        // Also verify Keyence TCP reachability when using serial transport
+        let address = format!("{}:{}", cfg.keyence_host, cfg.keyence_port);
+        match address.parse::<SocketAddr>() {
+            Ok(socket_addr) => {
+                match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(3)) {
+                    Ok(_) => println!("  Keyence TCP check: OK ({})", address),
+                    Err(err) => {
+                        eprintln!("  Keyence TCP check: FAILED ({}) - {}", address, err)
+                    }
+                }
+            }
             Err(err) => eprintln!("  Keyence TCP check: FAILED ({}) - {}", address, err),
-        },
-        Err(err) => eprintln!("  Keyence TCP check: FAILED ({}) - {}", address, err),
+        }
     }
 }
 
