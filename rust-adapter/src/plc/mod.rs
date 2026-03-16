@@ -1,8 +1,10 @@
+pub mod dummy_tcp_plc;
 pub mod keyence;
-pub mod keyence_tcp;  // ← add this
+pub mod keyence_tcp;
 
 use crate::config::Config;
 use crate::error::AdapterError;
+use dummy_tcp_plc::DummyTcpPlc;
 use std::sync::{Arc, Mutex};
 
 pub trait PlcDevice: Send + Sync {
@@ -18,10 +20,8 @@ pub type SharedPlc = Arc<Mutex<Box<dyn PlcDevice>>>;
 
 pub fn create_plc_device(cfg: &Config) -> Result<SharedPlc, AdapterError> {
     if cfg.uses_plc_tcp() {
-        // TCP transport → Modbus TCP over Keyence port
-        Ok(Arc::new(Mutex::new(Box::new(
-            keyence_tcp::KeyenceTcpPlc::new(cfg),
-        ))))
+        // TCP transport → dummy (proxy spawned separately)
+        Ok(Arc::new(Mutex::new(Box::new(DummyTcpPlc))))
     } else {
         // Serial transport → Modbus RTU
         Ok(Arc::new(Mutex::new(Box::new(

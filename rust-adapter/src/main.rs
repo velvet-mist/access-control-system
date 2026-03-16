@@ -110,7 +110,7 @@ async fn main() {
         });
     }
 
-    if let Err(e) = start_server(cfg, plc).await {
+    if let Err(e) = start_server(cfg, plc, access).await {
         eprintln!("Server error: {}", e);
     }
 }

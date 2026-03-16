@@ -1,10 +1,10 @@
 use crate::backend::client::BackendClient;
 use crate::config::Config;
-use crate::connections::connection::KeyenceConnection;
-use crate::connections::read::{send_and_read, is_success, parse_error};
+use crate::connections::shared::SharedKeyence;
 use crate::error::AdapterError;
 use crate::override_role;
 use crate::plc::SharedPlc;
+use crate::tcp_handler::tcp::{grant_access, AccessState};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -150,8 +150,9 @@ enum CommandPermission {
     Unchecked,
 }
 
+/// Send a single command to the Keyence unit over the shared persistent connection.
 async fn forward_keyence_command(
-    cfg: &Config,
+    keyence: &SharedKeyence,
     command: &str,
     permission: CommandPermission,
 ) -> Result<Option<String>, AdapterError> {
@@ -159,36 +160,21 @@ async fn forward_keyence_command(
         return Err(AdapterError::ProtectedCommand(command.to_string()));
     }
 
-    let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port);
-    let response = send_and_read(&mut conn, command).await?;
+    let response = keyence.send(command).await?;
 
     if response.is_empty() {
         return Ok(None);
     }
 
-    if let Some(error) = parse_error(&response) {
-        return Err(AdapterError::PlcComm(format!(
-            "machine rejected command {}: {}",
-            command, error
-        )));
-    }
-
-    if !is_success(&response) {
-        return Err(AdapterError::PlcComm(format!(
-            "unexpected machine response for {}: {}",
-            command, response
-        )));
-    }
-
     Ok(Some(response))
 }
 
+/// Send a sequence of commands over the same shared connection.
 async fn run_machine_sequence(
-    cfg: &Config,
+    keyence: &SharedKeyence,
     commands: &[&str],
     permission: CommandPermission,
 ) -> Result<Vec<MachineSequenceResponse>, AdapterError> {
-    let mut conn = KeyenceConnection::new(&cfg.keyence_host, cfg.keyence_port);
     let mut responses = Vec::with_capacity(commands.len());
 
     for command in commands {
@@ -196,20 +182,7 @@ async fn run_machine_sequence(
             return Err(AdapterError::ProtectedCommand((*command).to_string()));
         }
 
-        let response = send_and_read(&mut conn, command).await?;
-        if let Some(error) = parse_error(&response) {
-            return Err(AdapterError::PlcComm(format!(
-                "machine rejected command {}: {}",
-                command, error
-            )));
-        }
-
-        if !response.is_empty() && !is_success(&response) {
-            return Err(AdapterError::PlcComm(format!(
-                "unexpected machine response for {}: {}",
-                command, response
-            )));
-        }
+        let response = keyence.send(command).await?;
 
         responses.push(MachineSequenceResponse {
             command: (*command).to_string(),
@@ -265,15 +238,18 @@ async fn authorize_and_forward_command(
     request: AuthorizeCommandRequest,
     cfg: Config,
     plc: SharedPlc,
+    keyence: SharedKeyence,
+    access: AccessState,
 ) -> Result<AuthorizeCommandResponse, AdapterError> {
     let command = normalize_command(&request.command);
 
+    // Non-access-controlled commands (e.g. INSPECT) bypass the backend check
     if !is_access_controlled_command(&command) {
-    let machine_sequence = if command == "INSPECT" {
-            run_machine_sequence(&cfg, &["RS", "TA"], CommandPermission::Unchecked).await?
+        let machine_sequence = if command == "INSPECT" {
+            run_machine_sequence(&keyence, &["RS", "TA"], CommandPermission::Unchecked).await?
         } else {
             let machine_response =
-                forward_keyence_command(&cfg, &command, CommandPermission::Unchecked).await?;
+                forward_keyence_command(&keyence, &command, CommandPermission::Unchecked).await?;
             vec![MachineSequenceResponse {
                 command: command.clone(),
                 response: machine_response.clone(),
@@ -290,6 +266,7 @@ async fn authorize_and_forward_command(
         });
     }
 
+    // R0 / S0 — check backend, then grant or deny
     let pending_started_at = Instant::now();
     {
         let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
@@ -316,17 +293,30 @@ async fn authorize_and_forward_command(
     };
 
     let machine_sequence = if allowed {
-        let response = forward_keyence_command(&cfg, &command, CommandPermission::Checked).await?;
-        response.map(|value| vec![MachineSequenceResponse {
-            command: command.clone(),
-            response: Some(value),
-        }]).unwrap_or_default()
+        // Grant access so the TCP listener will forward the next R0/S0 from Keyence
+        grant_access(&access);
+        println!("Access granted for {} — TCP listener will allow next R0/S0", command);
+
+        let response =
+            forward_keyence_command(&keyence, &command, CommandPermission::Checked).await?;
+        response
+            .map(|value| {
+                vec![MachineSequenceResponse {
+                    command: command.clone(),
+                    response: Some(value),
+                }]
+            })
+            .unwrap_or_default()
     } else {
         vec![]
     };
 
     let mut plc_guard = plc.lock().map_err(|_| AdapterError::Plc)?;
-    plc_guard.set_allow()?;
+    if allowed {
+        plc_guard.set_allow()?;
+    } else {
+        plc_guard.set_deny()?;
+    }
     plc_guard.clear_request_pending()?;
     let forwarded = allowed;
 
@@ -340,27 +330,11 @@ async fn authorize_and_forward_command(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn protected_commands_are_normalized() {
-        assert_eq!(normalize_command("ro"), "R0");
-        assert_eq!(normalize_command("SO"), "S0");
-    }
-
-    #[test]
-    fn test_protected_commands_require_checked_permission() {
-        let cfg = Config::load();
-        let fut = forward_keyence_command(&cfg, "S0", CommandPermission::Unchecked);
-        // Test would need runtime, skip for compile
-    }
-}
-
 pub fn create_filters(
     config: Config,
     plc: SharedPlc,
+    keyence: SharedKeyence,
+    access: AccessState,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let health = warp::path!("health").map(|| "OK");
 
@@ -438,14 +412,22 @@ pub fn create_filters(
 
     let authorize_cmd_plc = plc.clone();
     let authorize_cmd_cfg = config.clone();
+    let authorize_cmd_keyence = keyence.clone();
+    let authorize_cmd_access = access.clone();
     let authorize_command_handler = warp::post()
         .and(auth.clone())
         .and(warp::body::json())
         .and(warp::any().map(move || authorize_cmd_plc.clone()))
         .and(warp::any().map(move || authorize_cmd_cfg.clone()))
+        .and(warp::any().map(move || authorize_cmd_keyence.clone()))
+        .and(warp::any().map(move || authorize_cmd_access.clone()))
         .and_then(
-            |request: AuthorizeCommandRequest, plc: SharedPlc, cfg: Config| async move {
-                authorize_and_forward_command(request, cfg, plc)
+            |request: AuthorizeCommandRequest,
+             plc: SharedPlc,
+             cfg: Config,
+             keyence: SharedKeyence,
+             access: AccessState| async move {
+                authorize_and_forward_command(request, cfg, plc, keyence, access)
                     .await
                     .map(|payload| {
                         warp::reply::with_status(warp::reply::json(&payload), StatusCode::OK)
@@ -454,9 +436,7 @@ pub fn create_filters(
             },
         );
 
-    let authorize_command = warp::path!("authorize-command")
-        .and(authorize_command_handler.clone());
-
+    let authorize_command = warp::path!("authorize-command").and(authorize_command_handler.clone());
     let machine_command = warp::path!("machine-command").and(authorize_command_handler);
 
     let routes = api.and(
@@ -505,8 +485,15 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
     Err(err)
 }
 
-pub async fn start_server(config: Config, plc: SharedPlc) -> Result<(), AdapterError> {
-    let routes = create_filters(config.clone(), plc);
+pub async fn start_server(
+    config: Config,
+    plc: SharedPlc,
+    access: AccessState,
+) -> Result<(), AdapterError> {
+    // One shared persistent Keyence TCP connection for the lifetime of the server
+    let keyence = SharedKeyence::new(&config.keyence_host, config.keyence_port);
+
+    let routes = create_filters(config.clone(), plc, keyence, access);
     let addr = format!("{}:{}", config.server_host, config.server_port);
 
     println!("Starting HTTP server on {}", addr);
@@ -524,4 +511,30 @@ pub async fn start_server(config: Config, plc: SharedPlc) -> Result<(), AdapterE
     warp::serve(routes).run(fallback_addr).await;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protected_commands_are_normalized() {
+        assert_eq!(normalize_command("ro"), "R0");
+        assert_eq!(normalize_command("SO"), "S0");
+    }
+
+    #[test]
+    fn inspect_is_normalized() {
+        assert_eq!(normalize_command("TRIGGER_INSPECTION"), "INSPECT");
+        assert_eq!(normalize_command("inspect"), "INSPECT");
+    }
+
+    #[test]
+    fn access_controlled_detection() {
+        assert!(is_access_controlled_command("R0"));
+        assert!(is_access_controlled_command("S0"));
+        assert!(is_access_controlled_command("RO")); // OCR alias
+        assert!(!is_access_controlled_command("INSPECT"));
+        assert!(!is_access_controlled_command("TA"));
+    }
 }

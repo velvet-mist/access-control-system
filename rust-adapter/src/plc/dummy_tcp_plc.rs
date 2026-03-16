@@ -1,17 +1,16 @@
 use crate::error::AdapterError;
 use crate::plc::PlcDevice;
 
-#[derive(Debug)]
-pub struct DummyPlc;
+pub struct DummyTcpPlc;
 
-impl PlcDevice for DummyPlc {
+impl PlcDevice for DummyTcpPlc {
     fn set_allow(&mut self) -> Result<(), AdapterError> {
-        println!("TCP proxy mode: access ALLOWED (handled by proxy access state)");
+        println!("TCP proxy: ALLOW signal (handled by access state/proxy)");
         Ok(())
     }
 
     fn set_deny(&mut self) -> Result<(), AdapterError> {
-        println!("TCP proxy mode: access DENIED (handled by proxy access state)");
+        println!("TCP proxy: DENY signal (handled by access state/proxy)");
         Ok(())
     }
 
