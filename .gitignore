@@ -10,3 +10,5 @@ rust-adapter/src/main1.rs
 .venv/
 __pycache__/
 *.py[cod]
+.gitignore
+secrets_1.py

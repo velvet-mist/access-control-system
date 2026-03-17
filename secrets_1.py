@@ -10,3 +10,4 @@ cookie_scheme = APIKeyCookie(name="session")
 async def read_items(session: str = Depends(cookie_scheme)):
     return {"session": session}
 
+ 
