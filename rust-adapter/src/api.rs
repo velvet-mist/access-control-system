@@ -490,25 +490,17 @@ pub async fn start_server(
     plc: SharedPlc,
     access: AccessState,
 ) -> Result<(), AdapterError> {
-    // One shared persistent Keyence TCP connection for the lifetime of the server
     let keyence = SharedKeyence::new(&config.keyence_host, config.keyence_port);
-
     let routes = create_filters(config.clone(), plc, keyence, access);
+
     let addr = format!("{}:{}", config.server_host, config.server_port);
-
     println!("Starting HTTP server on {}", addr);
-    let socket_addr: std::net::SocketAddr = addr.parse().map_err(|_| AdapterError::Config)?;
-    if std::net::TcpListener::bind(socket_addr).is_ok() {
-        warp::serve(routes).run(socket_addr).await;
-        return Ok(());
-    }
 
-    let fallback_addr = std::net::SocketAddr::from(([0, 0, 0, 0], config.server_port));
-    eprintln!(
-        "Server host {} is not available, falling back to {}",
-        config.server_host, fallback_addr
-    );
-    warp::serve(routes).run(fallback_addr).await;
+    let socket_addr: std::net::SocketAddr = addr
+        .parse()
+        .map_err(|_| AdapterError::Config)?;
+
+    warp::serve(routes).run(socket_addr).await;
 
     Ok(())
 }

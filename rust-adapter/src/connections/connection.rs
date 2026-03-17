@@ -164,32 +164,27 @@ impl KeyenceConnection {
     }
 
     async fn try_send(&mut self, command: &str) -> Result<String, AdapterError> {
-        let inner = self
-            .stream
-            .as_mut()
+        let inner = self.stream.as_mut()
             .ok_or_else(|| AdapterError::PlcComm("not connected".to_string()))?;
-
-        // Send command + CRLF delimiter (per Keyence protocol spec)
+    
         let payload = format!("{}\r\n", command.trim());
-        inner
-            .writer
-            .write_all(payload.as_bytes())
-            .await
+        
+        // ADD THIS
+        eprintln!(">>> sending bytes: {:?}", payload.as_bytes());
+        
+        inner.writer.write_all(payload.as_bytes()).await
             .map_err(|e| AdapterError::PlcComm(format!("write error: {}", e)))?;
-
-        // Read one response line with timeout (response is also CRLF terminated)
+    
         let mut line = String::new();
-        timeout(READ_TIMEOUT, inner.reader.read_line(&mut line))
+        let n = timeout(READ_TIMEOUT, inner.reader.read_line(&mut line))
             .await
-            .map_err(|_| AdapterError::PlcComm("read timeout — Keyence unit not responding".to_string()))?
+            .map_err(|_| AdapterError::PlcComm("read timeout".to_string()))?
             .map_err(|e| AdapterError::PlcComm(format!("read error: {}", e)))?;
-
-        // Strip CRLF delimiter
-        let response = line
-            .trim_end_matches('\n')
-            .trim_end_matches('\r')
-            .to_string();
-
+    
+        // ADD THIS
+        eprintln!("<<< received {} bytes: {:?}", n, line.as_bytes());
+    
+        let response = line.trim_end_matches('\n').trim_end_matches('\r').to_string();
         Ok(response)
     }
 

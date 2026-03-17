@@ -6,6 +6,7 @@ mod error;
 mod override_role;
 mod plc;
 mod tcp_handler;
+mod dummy_tcp_plc;
 
 use api::start_server;
 use config::Config;
@@ -19,7 +20,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
-
+use crate::plc::dummy_tcp_plc::DummyTcpPlc;
 #[tokio::main]
 async fn main() {
     let shell_env = capture_env(&[
