@@ -25,6 +25,7 @@ pub struct Config {
     pub plc_register_deny: u16,
     pub keyence_host: String,
     pub keyence_port: u16,
+    pub keyence_command_log: String,
     // Embedded Python settings
     pub run_embedded_python: bool,
     #[cfg(feature = "embedded-python")]
@@ -56,6 +57,7 @@ impl Config {
             plc_register_deny: env_parse_or("PLC_REGISTER_DENY", 101),
             keyence_host: env_or("KEYENCE_HOST", "127.0.0.1"),
             keyence_port: env_parse_or("KEYENCE_PORT", 9004),
+            keyence_command_log: env_or("KEYENCE_COMMAND_LOG", "keyence_commands.log"),
             run_embedded_python: env_bool_or("RUN_EMBEDDED_PYTHON", false),
             #[cfg(feature = "embedded-python")]
             python_module: env_or("PYTHON_MODULE", "controller.main"),

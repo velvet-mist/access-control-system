@@ -1,9 +1,37 @@
 use crate::config::Config;
 use crate::connections::shared::SharedKeyence;
 use crate::error::AdapterError;
+use chrono::{ Utc};
+use serde_json::json;
 use std::sync::{Arc, Mutex};
+use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+
+pub type CommandLogger = Arc<Mutex<File>>;
+
+async fn init_logger(path: &str) -> Result<CommandLogger, AdapterError> {
+    let file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+        .await
+        .map_err(|e| AdapterError::PlcComm(format!("Failed to open log file {}: {}", path, e)))?;
+    Ok(Arc::new(Mutex::new(file)))
+}
+
+async fn log_event(logger: &CommandLogger, event: serde_json::Value) {
+    let timestamp = Utc::now().to_rfc3339();
+    let line = serde_json::to_string(&json!({
+        "timestamp": timestamp,
+        "event": event
+    })).unwrap_or_else(|_| r#"{"error": "json serialization failed"}"#.to_string());
+    if let Ok(mut guard) = logger.lock() {
+        let _ = guard.write_all(line.as_bytes()).await;
+        let _ = guard.write_all(b"\n").await;
+        let _ = guard.flush().await;
+    }
+}
 
 /// Shared access state — set to true when the backend approves a badge scan,
 /// consumed (revoked) when Keyence sends R0 or S0.
@@ -45,6 +73,7 @@ async fn handle_client(
     stream: TcpStream,
     keyence: SharedKeyence,
     access: AccessState,
+    _logger: Option<CommandLogger>,
 ) -> Result<(), AdapterError> {
     let peer = stream
         .peer_addr()
@@ -156,7 +185,7 @@ pub async fn start_tcp_proxy(
         let client_access = Arc::clone(&access);
 
         tokio::spawn(async move {
-            if let Err(e) = handle_client(stream, client_keyence, client_access).await {
+            if let Err(e) = handle_client(stream, client_keyence, client_access, ).await {
                 eprintln!("TCP proxy client error: {}", e);
             }
         });
