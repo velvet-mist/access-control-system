@@ -185,10 +185,11 @@ pub async fn start_tcp_proxy(
         let client_access = Arc::clone(&access);
 
         tokio::spawn(async move {
-            if let Err(e) = handle_client(stream, client_keyence, client_access, ).await {
+            if let Err(e) = handle_client(stream, client_keyence, client_access, None).await {
                 eprintln!("TCP proxy client error: {}", e);
             }
         });
+
     }
 }
 
