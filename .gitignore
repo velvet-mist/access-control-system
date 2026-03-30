@@ -1,7 +1,7 @@
 /target
 target/
 migrations/
-*.md
+md files/
 alembic.ini
 .env
 seed_test_data.py
