@@ -7,9 +7,9 @@ mod override_role;
 mod plc;
 mod tcp_handler;
 
-
 use api::start_server;
 use config::Config;
+use connections::shared::SharedKeyence;
 use plc::create_plc_device;
 use tcp_handler::tcp::{new_access_state, start_tcp_proxy};
 #[cfg(feature = "embedded-python")]
@@ -96,6 +96,17 @@ async fn main() {
             return;
         }
     };
+
+    // ── Startup: put CV-X into run mode ──────────────────────────────────────
+    // Send R0 once on boot so the machine always starts in a known safe state.
+    // This runs once and does not block the server from starting.
+    println!("Startup: sending R0 to put CV-X in run mode...");
+    let startup_keyence = SharedKeyence::new(&cfg.keyence_host, cfg.keyence_port);
+    match startup_keyence.send("R0").await {
+        Ok(response) => println!("Startup R0: OK ({})", response),
+        Err(e) => eprintln!("Startup R0 failed (continuing anyway): {}", e),
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Shared access state — granted by the API when a badge scan is approved,
     // consumed (revoked) when Keyence sends R0 or S0.

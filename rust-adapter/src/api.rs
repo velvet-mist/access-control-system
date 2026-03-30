@@ -162,6 +162,14 @@ async fn forward_keyence_command(
 
     let response = keyence.send(command).await?;
 
+    // Auto-stop after TA — CV-X holds trigger active until reset
+    if command == "TA" {
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        if let Err(e) = keyence.send("RS").await {
+            eprintln!("Warning: failed to send RS after TA: {}", e);
+        }
+    }
+
     if response.is_empty() {
         return Ok(None);
     }
